@@ -1,6 +1,11 @@
 name: Desktop packages
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing draft release tag to build and upload (leave empty for CI artifacts only)
+        required: false
+        default: ""
 permissions:
   contents: read
 jobs:
@@ -24,6 +29,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ inputs.release_tag || github.ref }}
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -42,3 +48,32 @@ jobs:
             dist/*.zip
             dist/*.exe
           if-no-files-found: error
+  upload:
+    if: inputs.release_tag != ''
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: margin-*
+          path: release-assets
+          merge-multiple: true
+      - name: Validate draft and generate checksums
+        working-directory: release-assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 5
+          sha256sum *.dmg *.zip *.exe > SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
+      - name: Upload to draft release
+        working-directory: release-assets
+        run: gh release upload "$RELEASE_TAG" *.dmg *.zip *.exe SHA256SUMS.txt --clobber
