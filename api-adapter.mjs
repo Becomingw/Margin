@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Paper Pal's API adapter: one HTTP request shaped like the agent CLIs the
+ * Margin's compatibility API adapter: one HTTP request shaped like the agent CLIs the
  * server already spawns. The prompt arrives on stdin, the assistant's answer is
  * printed on stdout, errors go to stderr with a non-zero exit code.
  *
@@ -29,7 +29,6 @@
 import { readFileSync, realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-const APP_URL = "https://github.com/claire1217/paper-pal";
 // Keywords OpenAI's strict structured-output mode rejects. They stay in the
 // prompt-embedded schema; only the response_format copy is simplified.
 const UNSUPPORTED_SCHEMA_KEYWORDS = new Set([
@@ -40,7 +39,7 @@ const UNSUPPORTED_SCHEMA_KEYWORDS = new Set([
 export function parseArgs(argv) {
   const options = {
     protocol: "openai", baseUrl: null, model: null, keyEnv: null, keyOptional: false, schema: null,
-    timeoutMs: 120_000, maxTokens: null, effort: null, effortStyle: "none", title: "Paper Pal", ping: false,
+    timeoutMs: 120_000, maxTokens: null, effort: null, effortStyle: "none", title: "Margin", ping: false,
   };
   const valueOptions = {
     "--protocol": "protocol", "--base-url": "baseUrl", "--model": "model", "--key-env": "keyEnv",
@@ -185,8 +184,7 @@ export function buildRequest(options, prompt, key, schema) {
   };
   // OpenRouter attributes traffic by these two headers; other hosts ignore them.
   if (/(^|[.])openrouter[.]ai$/i.test(hostOf(base))) {
-    headers["HTTP-Referer"] = APP_URL;
-    headers["X-Title"] = options.title || "Paper Pal";
+    headers["X-Title"] = options.title || "Margin";
   }
   return { url: `${base}/chat/completions`, headers, body, optional };
 }
@@ -315,9 +313,9 @@ async function main() {
   if (!["openai", "anthropic"].includes(options.protocol)) return fail(2, `Unknown protocol "${options.protocol}". Use openai or anthropic.`);
   if (!options.baseUrl) return fail(2, "No base URL given (--base-url).");
   if (!/^https?:\/\//i.test(options.baseUrl)) return fail(2, "The base URL must start with http:// or https://.");
-  if (!options.model) return fail(2, "No model configured. Set <provider>.model in .paper-pal.json.");
+  if (!options.model) return fail(2, "No model configured. Set <provider>.model in .margin.json.");
   if (!key && !options.keyOptional) {
-    return fail(2, `${options.keyEnv || "The API key variable"} is not set. Put it in the .env file next to Paper Pal's package.json (never in .paper-pal.json).`);
+    return fail(2, `${options.keyEnv || "The API key variable"} is not set. Put it in the .env file next to Margin's package.json (never in .margin.json).`);
   }
   const prompt = options.ping ? "Reply with the single word: ok" : await readStdin();
   if (!prompt) return fail(2, "No prompt was received on stdin.");
@@ -337,7 +335,7 @@ async function main() {
   try {
     text = await send(request, {
       timeoutMs: options.timeoutMs,
-      backoffMs: Number(process.env.PAPER_PAL_ADAPTER_BACKOFF_MS) || 1500,
+      backoffMs: Number(process.env.MARGIN_ADAPTER_BACKOFF_MS) || 1500,
       log: (message) => process.stderr.write(`[api-adapter] ${redact(message, key)}\n`),
     });
   } catch (error) {

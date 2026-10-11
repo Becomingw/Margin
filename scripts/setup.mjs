@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Configure Paper Pal for one LaTeX project. Never prompts: everything is a
+// Configure Margin for a Markdown or LaTeX project. Never prompts: everything is a
 // flag, the result can be printed as JSON (--json), and every failure has its
 // own exit code, so a person, a script or a coding agent can drive it.
 //
@@ -9,7 +9,7 @@ import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  AGENT_PROVIDERS, PROVIDER_TABLE, describeProvider, firstUsableProvider, resolveExecutable,
+  AGENT_PROVIDERS, resolveExecutable,
 } from "../agent-providers.mjs";
 import { isInside } from "../config.mjs";
 import { loadEnvFile } from "../env.mjs";
@@ -22,21 +22,16 @@ const wantsJson = argv.includes("--json");
 const EXIT = { ok: 0, usage: 2, projectNotFound: 3, noMain: 4, severalMain: 5, configExists: 6 };
 
 const usageText = [
-  "Usage: npm run setup -- /path/to/latex-project [options]",
-  "       node scripts/setup.mjs /path/to/latex-project [options]",
+  "Usage: npm run setup -- /path/to/document-or-project [options]",
+  "       node scripts/setup.mjs /path/to/document-or-project [options]",
   "",
   "Options:",
   "  --repo <dir>              The project directory (same as the positional argument)",
-  "  --main <file.tex>         Manuscript entry point, relative to the project",
-  "                            (default: main.tex, else the one .tex with \\documentclass)",
+  "  --main <file.md|file.tex> Manuscript entry point, relative to the project",
+  "                            (default: main.tex or main.md, else a detected document)",
   "  --source <dir>            Restrict readable/writable sources (default: .)",
   "  --title <name>            Name shown in the app (default: the folder name)",
-  `  --provider <id>           Default agent: ${AGENT_PROVIDERS.join(" | ")}`,
-  "                            (default: first of codex, claude that is installed, then the first",
-  "                            API provider whose key is set, else codex)",
-  "  --model <id>              Model for that provider (required for API providers to be ready)",
-  "  --chat-model <id>         Model for project chat (default: --model)",
-  "  --review-language <name>  Language section reviews are written in (default: en)",
+  "  Legacy AI flags are accepted but ignored; no provider or key is needed.",
   "  --compile / --no-compile  Enable or disable PDF compilation (default: enabled when latexmk is on PATH)",
   "  --no-remember             Do not make this the checkout's default project",
   `  --force                   Replace an existing ${CONFIG_NAME}`,
@@ -45,9 +40,9 @@ const usageText = [
   "  --help                    Show this text",
   "",
   `Writes ${CONFIG_NAME} with the settings a project usually changes. Every other field`,
-  "has a default; paper-pal.config.example.json and docs/configuration.md show the full shape.",
+  "has a default; margin.config.example.json and docs/configuration.md show the full shape.",
   "",
-  "Exit codes: 0 ok, 2 usage, 3 project not found, 4 no main .tex found,",
+  "Exit codes: 0 ok, 2 usage, 3 project not found, 4 no entry document found,",
   `            5 several candidates, 6 ${CONFIG_NAME} already exists`,
 ].join("\n");
 
@@ -98,14 +93,17 @@ loadEnvFile(appRoot);
 
 const projectValue = values["--repo"] || positionals[0];
 if (!projectValue) fail(EXIT.usage, "usage", "No project directory given.");
-const repoRoot = path.resolve(projectValue);
+let repoRoot = path.resolve(projectValue);
 let projectStat = null;
 try {
   projectStat = await fs.stat(repoRoot);
 } catch {
   // Reported below.
 }
-if (!projectStat?.isDirectory()) fail(EXIT.projectNotFound, "project_not_found", `Project directory does not exist: ${repoRoot}`);
+if (projectStat?.isFile() && /\.(md|tex)$/i.test(repoRoot)) {
+  values["--main"] ||= path.basename(repoRoot);
+  repoRoot = path.dirname(repoRoot);
+} else if (!projectStat?.isDirectory()) fail(EXIT.projectNotFound, "project_not_found", `Project directory does not exist: ${repoRoot}`);
 
 const configPath = path.join(repoRoot, CONFIG_NAME);
 if (existsSync(configPath) && !flags.has("--force")) {
@@ -137,7 +135,11 @@ async function findMainCandidates(root, directory = root, depth = 0) {
     if (entry.isDirectory()) {
       if (skippedDirectories.has(entry.name) || /^_minted/.test(entry.name)) continue;
       matches.push(...await findMainCandidates(root, target, depth + 1));
-    } else if (entry.isFile() && /[.]tex$/i.test(entry.name)) {
+    } else if (entry.isFile() && /[.](tex|md)$/i.test(entry.name)) {
+      if (/\.md$/i.test(entry.name)) {
+        matches.push(path.relative(root, target).split(path.sep).join("/"));
+        continue;
+      }
       let head = "";
       try {
         const handle = await fs.open(target, "r");
@@ -159,24 +161,30 @@ async function findMainCandidates(root, directory = root, depth = 0) {
 let main = values["--main"] ? values["--main"].replaceAll("\\", "/").replace(/^\.\//, "") : null;
 let mainDetection = "flag";
 if (!main) {
+  if (existsSync(path.join(repoRoot, "main.tex")) && existsSync(path.join(repoRoot, "main.md"))) {
+    fail(EXIT.severalMain, "several_main_tex", "Several files could be the manuscript entry point. Pass --main <file.md|file.tex> to choose one:", { candidates: ["main.md", "main.tex"] });
+  }
   if (existsSync(path.join(repoRoot, "main.tex"))) {
     main = "main.tex";
     mainDetection = "main.tex";
+  } else if (existsSync(path.join(repoRoot, "main.md"))) {
+    main = "main.md";
+    mainDetection = "main.md";
   } else {
     const candidates = await findMainCandidates(repoRoot);
-    const named = candidates.filter((value) => path.posix.basename(value).toLowerCase() === "main.tex");
+    const named = candidates.filter((value) => /^main\.(md|tex)$/i.test(path.posix.basename(value)));
     if (candidates.length === 1) main = candidates[0];
     else if (named.length === 1) main = named[0];
     else if (!candidates.length) {
-      fail(EXIT.noMain, "no_main_tex", `No .tex file containing \\documentclass was found under ${repoRoot}. Pass --main <file.tex>.`);
+      fail(EXIT.noMain, "no_main_tex", `No Markdown or LaTeX entry point was found under ${repoRoot}. Pass --main <file.md|file.tex>.`);
     } else {
-      fail(EXIT.severalMain, "several_main_tex", "Several files could be the manuscript entry point. Pass --main <file.tex> to choose one:", { candidates });
+      fail(EXIT.severalMain, "several_main_tex", "Several files could be the manuscript entry point. Pass --main <file.md|file.tex> to choose one:", { candidates });
     }
     mainDetection = "documentclass";
   }
 }
 const absoluteMain = path.resolve(repoRoot, main);
-if (!isInside(repoRoot, absoluteMain) || !existsSync(absoluteMain)) {
+if (!isInside(repoRoot, absoluteMain) || !/\.(md|tex)$/i.test(main) || !existsSync(absoluteMain) || !(await fs.stat(absoluteMain)).isFile()) {
   fail(EXIT.noMain, "no_main_tex", `Manuscript entry point does not exist inside the project: ${main}`);
 }
 const sourceRoot = (values["--source"] || ".").replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/$/, "") || ".";
@@ -194,61 +202,29 @@ const compile = flags.has("--no-compile")
   : flags.has("--compile")
     ? { enabled: true, decidedBy: "flag" }
     : { enabled: latexmkFound, decidedBy: "auto" };
+if (/\.md$/i.test(main)) compile.enabled = false;
 compile.latexmkFound = latexmkFound;
-
-const chosenProvider = provider || firstUsableProvider() || "codex";
-const providerDecidedBy = provider ? "flag" : firstUsableProvider() ? "auto" : "fallback";
 
 const mainDirectory = path.posix.dirname(main);
 const mainName = path.posix.basename(main);
-const providerBlock = {
-  ...(values["--model"] ? { model: values["--model"] } : {}),
-  ...(values["--chat-model"] ? { chatModel: values["--chat-model"] } : {}),
-};
 const config = {
   title: values["--title"] || path.basename(repoRoot),
-  projectLabel: "Local LaTeX project",
+  projectLabel: "Local review workspace",
   sourceRoot,
   defaultDocument: main,
-  pdf: path.posix.join(mainDirectory, mainName.replace(/[.]tex$/i, ".pdf")),
+  pdf: path.posix.join(mainDirectory, mainName.replace(/[.](tex|md)$/i, ".pdf")),
   latex: {
     enabled: compile.enabled,
     cwd: mainDirectory,
     command: "latexmk",
     args: ["-pdf", "-interaction=nonstopmode", "-halt-on-error", mainName],
   },
-  agent: {
-    enabled: true,
-    provider: chosenProvider,
-    allowOverride: true,
-    autoProcessComments: true,
-    promptMode: "minimal",
-    reasoningEffort: "low",
-    timeoutMs: 90000,
-    projectReasoningEffort: "medium",
-    projectTimeoutMs: 180000,
-    chatReasoningEffort: "medium",
-    chatTimeoutMs: 300000,
-    chatConcurrency: 1,
-    reviewLanguage: values["--review-language"] || "en",
-    contextBudgetChars: 120000,
-    entryPoints: [main],
-    // agent.guidanceFiles is left out on purpose: unset means "whichever of
-    // AGENTS.md and CLAUDE.md exist in the paper folder", which keeps working
-    // when the author adds one later. paper-pal.config.example.json shows the
-    // full shape with every optional field.
-    terminologyFiles: [],
-  },
-  // Only the chosen provider gets a block; add others by hand when needed.
-  // API keys never go in this file: they live in Paper Pal's .env.
-  [chosenProvider]: PROVIDER_TABLE[chosenProvider].kind === "cli"
-    ? { command: PROVIDER_TABLE[chosenProvider].defaultCommand, ...providerBlock }
-    : providerBlock,
+  agent: { enabled: false },
   approvedDocuments: [],
 };
 
 await fs.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", flag: flags.has("--force") ? "w" : "wx" });
-// New projects get .paper-pal/. A project that already has state under the
+// New projects get .margin/. A project that already has state under the
 // pre-rename directory keeps using it, so nothing is lost or duplicated.
 const stateRoot = resolveStateDir(repoRoot);
 await fs.mkdir(stateRoot, { recursive: true });
@@ -258,16 +234,12 @@ if (remembered) {
   await fs.writeFile(path.join(appRoot, LOCAL_POINTER_NAME), `${JSON.stringify({ repo: repoRoot }, null, 2)}\n`, "utf8");
 }
 
-const providerState = describeProvider(chosenProvider, config);
 const quote = (value) => (/[\s"']/.test(value) ? `"${value}"` : value);
 const repoFlag = remembered ? "" : ` -- --repo ${quote(repoRoot)}`;
 const next = [`npm run doctor${repoFlag}`, `npm start${repoFlag}`];
 const notes = [];
-if (!providerState.available) notes.push(`${providerState.label} is not ready yet: ${providerState.reason}`);
-if (providerDecidedBy === "fallback") {
-  notes.push("No agent CLI (codex, claude) and no API key were found, so the default provider is codex. The app still opens; agent actions explain what is missing. Re-run with --provider <id> --model <id> --force to change it.");
-}
-if (!compile.enabled && compile.decidedBy === "auto") notes.push("latexmk was not found on PATH, so PDF compilation is off. Install a LaTeX distribution and re-run with --compile --force to turn it on.");
+if (values["--provider"] || values["--model"] || values["--chat-model"] || values["--review-language"]) notes.push("Legacy AI options were ignored; this workspace uses manual review.");
+if (!compile.enabled && compile.decidedBy === "auto" && /\.tex$/i.test(main)) notes.push("latexmk was not found on PATH, so PDF compilation is off. Install a LaTeX distribution and re-run with --compile --force to turn it on.");
 if (compile.enabled && !latexmkFound) notes.push("PDF compilation is on, but latexmk was not found on PATH.");
 if (existsSync(path.join(repoRoot, LEGACY_CONFIG_NAME))) notes.push(`${LEGACY_CONFIG_NAME} is still present; ${CONFIG_NAME} takes precedence and the old file can be deleted.`);
 if (path.basename(stateRoot) !== STATE_DIR_NAME) notes.push(`Existing review state in ${path.basename(stateRoot)}/ is kept and used as is.`);
@@ -278,13 +250,8 @@ finish(EXIT.ok, {
   project: repoRoot,
   defaultDocument: main,
   mainDetectedBy: mainDetection,
-  provider: chosenProvider,
-  providerStatus: {
-    decidedBy: providerDecidedBy,
-    model: values["--model"] || null,
-    available: providerState.available,
-    reason: providerState.reason,
-  },
+  mode: "manual-review",
+  formats: ["markdown", "latex"],
   compile: compile.enabled,
   compileStatus: { decidedBy: compile.decidedBy, latexmkFound },
   stateDirectory: path.basename(stateRoot),
@@ -295,7 +262,7 @@ finish(EXIT.ok, {
   `${APP_NAME} is configured for ${repoRoot}`,
   `  Configuration: ${configPath}`,
   `  Manuscript:    ${main}`,
-  `  Agent:         ${providerState.label}${values["--model"] ? ` (${values["--model"]})` : ""} - ${providerState.available ? "ready" : "not ready"}`,
+  "  Review:        manual; no AI backend required",
   `  PDF compile:   ${compile.enabled ? "on" : "off"}${compile.decidedBy === "auto" ? ` (latexmk ${latexmkFound ? "found" : "not found"})` : ""}`,
   ...notes.map((note) => `  Note: ${note}`),
   "",

@@ -1,4 +1,6 @@
 node_modules/
+dist/
+margin.local.json
 paper-pal.local.json
 review.local.json
 .env
@@ -19,5 +21,6 @@ review.local.json
 examples/**/*.pdf
 
 # Local review state created inside a manuscript project
+.margin/
 .paper-pal/
 .draft-review/

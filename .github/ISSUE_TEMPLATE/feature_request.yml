@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         **Do not include unpublished manuscript text or API keys.** Describe your writing situation in general terms.
-        Paper Pal is deliberately small: local, one author, review-first, no build step, one runtime dependency. Requests that fit those limits are the easiest to accept.
+        Margin is a local manual-review workspace for Markdown and LaTeX. Describe how this feature helps reading, annotations or review handoff.
   - type: textarea
     id: problem
     attributes:

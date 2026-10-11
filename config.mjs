@@ -14,12 +14,12 @@ async function readJson(target) {
   try {
     return JSON.parse(await fs.readFile(target, "utf8"));
   } catch (error) {
-    throw new Error(`Could not read the Paper Pal configuration at ${target}: ${error.message}`);
+    throw new Error(`Could not read the Margin configuration at ${target}: ${error.message}`);
   }
 }
 
 async function localProjectRoot(appRoot) {
-  // paper-pal.local.json, or the pre-rename review.local.json.
+  // Resolve the Margin workspace pointer, with import-era fallbacks.
   const target = resolveLocalPointer(appRoot);
   if (!target) return null;
   const local = await readJson(target);
@@ -40,7 +40,7 @@ export function isInside(parent, child) {
 
 export const DEFAULT_PORT = 4317;
 
-// --port wins over PAPER_PAL_PORT; 0 asks the OS for a free port.
+// --port wins over MARGIN_PORT; 0 asks the OS for a free port.
 function portSetting(value) {
   if (value === undefined || value === null || value === "") return DEFAULT_PORT;
   const port = Number(value);
@@ -81,14 +81,14 @@ export function assertNoSecrets(raw, configPath) {
   throw new Error([
     `${path.basename(configPath)} contains what looks like a credential: ${fields.join(", ")}.`,
     `${APP_NAME} refuses to start, because this file is normally committed and shared with the manuscript.`,
-    "Remove the field and put the key in the .env file next to Paper Pal's package.json instead, for example:",
+    "Remove the field and put the key in the .env file next to Margin's package.json instead, for example:",
     "  OPENAI_API_KEY=...",
     "The configuration may only name the variable (\"apiKeyEnv\": \"OPENAI_API_KEY\").",
   ].join("\n"));
 }
 
 // Programs the project configuration may name as latex.command. Anything else
-// needs PAPER_PAL_ALLOW_CUSTOM_LATEX=1 in the environment or the app's .env,
+// needs MARGIN_ALLOW_CUSTOM_LATEX=1 in the environment or the app's .env,
 // which a cloned manuscript repository cannot set.
 export const ALLOWED_LATEX_COMMANDS = Object.freeze(["latexmk", "pdflatex", "xelatex", "lualatex", "tectonic", "make"]);
 
@@ -99,7 +99,7 @@ function latexCommand(value, env) {
   if (ALLOWED_LATEX_COMMANDS.includes(bare)) return command;
   throw new Error([
     `latex.command is "${command}". A project configuration may only name one of: ${ALLOWED_LATEX_COMMANDS.join(", ")}.`,
-    `To run another program, set ${ENV.allowCustomLatex}=1 in your shell or in Paper Pal's .env (not in the project).`,
+    `To run another program, set ${ENV.allowCustomLatex}=1 in your shell or in Margin's .env (not in the project).`,
   ].join("\n"));
 }
 
@@ -110,7 +110,7 @@ function agentCommand(provider, value, env) {
   if (/^[A-Za-z0-9._-]+$/.test(command) && !command.startsWith("-")) return command;
   throw new Error([
     `${provider}.command is "${command}". A project configuration may only give a bare program name (no path, no spaces).`,
-    `Point to a specific binary with ${PROVIDER_TABLE[provider].commandEnv}=/path/to/${fallback} in your shell or in Paper Pal's .env,`,
+    `Point to a specific binary with ${PROVIDER_TABLE[provider].commandEnv}=/path/to/${fallback} in your shell or in Margin's .env,`,
     `or set ${ENV.allowCustomCommands}=1 there to allow any command from the project configuration.`,
   ].join("\n"));
 }
@@ -134,11 +134,11 @@ function apiProviderBlock(provider, block, env) {
     const baseUrl = String(block.baseUrl).replace(/\/+$/, "");
     if (!/^https?:\/\/[^\s]+$/i.test(baseUrl)) throw new Error(`${provider}.baseUrl must be an http(s) URL.`);
     const sameAsPreset = row.baseUrl && baseUrl === row.baseUrl;
-    if (!sameAsPreset && !isLoopbackUrl(baseUrl) && !truthyEnv(env.PAPER_PAL_ALLOW_PROJECT_BASE_URL)) {
+    if (!sameAsPreset && !isLoopbackUrl(baseUrl) && !truthyEnv(env.MARGIN_ALLOW_PROJECT_BASE_URL)) {
       throw new Error([
         `${provider}.baseUrl points to ${baseUrl}. A project configuration may only name this machine (127.0.0.1 / localhost)`,
         "as an API endpoint, because the API key is sent there.",
-        `Use the "custom" provider with ${ENV.customBaseUrl} in Paper Pal's .env, or set PAPER_PAL_ALLOW_PROJECT_BASE_URL=1 there.`,
+        `Use the "custom" provider with ${ENV.customBaseUrl} in Margin's .env, or set MARGIN_ALLOW_PROJECT_BASE_URL=1 there.`,
       ].join("\n"));
     }
     result.baseUrl = baseUrl;
@@ -149,16 +149,16 @@ function apiProviderBlock(provider, block, env) {
       throw new Error(`${provider}.apiKeyEnv must be the NAME of an environment variable (for example OPENAI_API_KEY), not a key.`);
     }
     // A project file may not choose WHICH secret is sent: only the provider's
-    // own variable, another provider key variable, or a PAPER_PAL_* name.
+    // own variable, another provider key variable, or a MARGIN_* name.
     // Otherwise a cloned repository could name AWS_SECRET_ACCESS_KEY or
     // GITHUB_TOKEN and have it posted to the API host as a bearer token.
     const knownKeyNames = new Set(Object.values(PROVIDER_TABLE).map((entry) => entry.apiKeyEnv).filter(Boolean));
-    const allowed = name === row.apiKeyEnv || knownKeyNames.has(name) || /^PAPER_PAL_[A-Z0-9_]*KEY$/.test(name);
-    if (!allowed && !truthyEnv(env.PAPER_PAL_ALLOW_PROJECT_KEY_ENV)) {
+    const allowed = name === row.apiKeyEnv || knownKeyNames.has(name) || /^MARGIN_[A-Z0-9_]*KEY$/.test(name);
+    if (!allowed && !truthyEnv(env.MARGIN_ALLOW_PROJECT_KEY_ENV)) {
       throw new Error([
         `${provider}.apiKeyEnv names ${name}. A project configuration may only name a provider key variable`,
-        `(${[...knownKeyNames].join(", ")}) or a PAPER_PAL_*_KEY variable, because that variable's value is sent to the API host.`,
-        "Rename the variable in Paper Pal's .env, or set PAPER_PAL_ALLOW_PROJECT_KEY_ENV=1 there.",
+        `(${[...knownKeyNames].join(", ")}) or a MARGIN_*_KEY variable, because that variable's value is sent to the API host.`,
+        "Rename the variable in Margin's .env, or set MARGIN_ALLOW_PROJECT_KEY_ENV=1 there.",
       ].join("\n"));
     }
     result.apiKeyEnv = name;
@@ -184,11 +184,11 @@ export async function loadReviewConfig({ appRoot, argv = process.argv.slice(2), 
   const explicitConfig = readArg(argv, "--config");
   const configPath = explicitConfig
     ? path.resolve(cwd, explicitConfig)
-    // .paper-pal.json, or the pre-rename .draft-review.json when only that exists.
+    // Prefer the Margin config while allowing existing workspaces to open.
     : resolveConfigPath(repoRoot);
   if (!existsSync(configPath)) {
     // Started before any setup, the "project" is just the current folder (usually
-    // Paper Pal's own): telling the user to run setup on that would be wrong.
+    // Margin's own): telling the user to run setup on that would be wrong.
     const namedProject = Boolean(explicitRepo || rememberedRepo || explicitConfig);
     throw new Error([
       `No ${APP_NAME} configuration (${CONFIG_NAME}) was found at ${configPath}.`,
@@ -203,9 +203,9 @@ export async function loadReviewConfig({ appRoot, argv = process.argv.slice(2), 
   assertNoSecrets(raw, configPath);
   const sourceRoot = relativeSetting(raw.sourceRoot ?? ".", "sourceRoot");
   const defaultDocument = relativeSetting(raw.defaultDocument ?? "main.tex", "defaultDocument");
-  const pdf = relativeSetting(raw.pdf ?? defaultDocument.replace(/[.]tex$/i, ".pdf"), "pdf");
+  const pdf = relativeSetting(raw.pdf ?? defaultDocument.replace(/[.](tex|md)$/i, ".pdf"), "pdf");
   const latex = {
-    enabled: raw.latex?.enabled !== false,
+    enabled: !/\.md$/i.test(defaultDocument) && raw.latex?.enabled !== false,
     cwd: relativeSetting(raw.latex?.cwd ?? path.posix.dirname(defaultDocument), "latex.cwd"),
     command: latexCommand(raw.latex?.command, env),
     args: Array.isArray(raw.latex?.args)
@@ -225,9 +225,8 @@ export async function loadReviewConfig({ appRoot, argv = process.argv.slice(2), 
     : null);
   const guidanceFiles = relativeList(shared.guidanceFiles, "agent.guidanceFiles")
     ?? ["AGENTS.md", "CLAUDE.md"].filter((name) => existsSync(path.join(repoRoot, name)));
-  // "codex.enabled: false" predates the other providers and always meant "no
-  // agent at all", so either spelling switches every provider off.
-  const agentEnabled = raw.agent?.enabled !== false && raw.codex?.enabled !== false;
+  // Retain legacy configuration validation, but this workspace never runs models.
+  const agentEnabled = false;
   const codex = {
     enabled: agentEnabled,
     command: agentCommand("codex", raw.codex?.command, env),

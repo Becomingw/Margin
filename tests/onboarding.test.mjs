@@ -15,7 +15,7 @@ import {
 
 after(cleanupAll);
 
-const noAgents = { CODEX_BIN: "/nonexistent/codex", CLAUDE_BIN: "/nonexistent/claude", OPENAI_API_KEY: "", ANTHROPIC_API_KEY: "", OPENROUTER_API_KEY: "", DEEPSEEK_API_KEY: "", PAPER_PAL_API_BASE_URL: "" };
+const noAgents = { CODEX_BIN: "/nonexistent/codex", CLAUDE_BIN: "/nonexistent/claude", OPENAI_API_KEY: "", ANTHROPIC_API_KEY: "", OPENROUTER_API_KEY: "", DEEPSEEK_API_KEY: "", MARGIN_API_BASE_URL: "" };
 const json = (result) => JSON.parse(result.stdout);
 
 async function texProject(files) {
@@ -30,9 +30,9 @@ const article = "\\documentclass{article}\n\\begin{document}\n\\section{A}\nText
 
 describe("names: new first, pre-rename names as a fallback", () => {
   it("uses the new names, and the old ones only when the new ones are absent", async () => {
-    assert.equal(CONFIG_NAME, ".paper-pal.json");
-    assert.equal(STATE_DIR_NAME, ".paper-pal");
-    assert.equal(LOCAL_POINTER_NAME, "paper-pal.local.json");
+    assert.equal(CONFIG_NAME, ".margin.json");
+    assert.equal(STATE_DIR_NAME, ".margin");
+    assert.equal(LOCAL_POINTER_NAME, "margin.local.json");
     const root = await makeTempDir();
     assert.equal(resolveConfigPath(root), path.join(root, CONFIG_NAME));
     assert.equal(resolveStateDir(root), path.join(root, STATE_DIR_NAME));
@@ -51,11 +51,11 @@ describe("names: new first, pre-rename names as a fallback", () => {
     assert.equal(resolveLocalPointer(root), path.join(root, LOCAL_POINTER_NAME));
   });
 
-  it("reads PAPER_PAL_HOST, then DRAFT_REVIEW_HOST, and never HOST", () => {
+  it("reads MARGIN_HOST and ignores inherited predecessor bindings", () => {
     assert.equal(hostFromEnvironment({}), "127.0.0.1");
     assert.equal(hostFromEnvironment({ HOST: "example.org" }), "127.0.0.1");
-    assert.equal(hostFromEnvironment({ DRAFT_REVIEW_HOST: "0.0.0.0" }), "0.0.0.0");
-    assert.equal(hostFromEnvironment({ DRAFT_REVIEW_HOST: "0.0.0.0", PAPER_PAL_HOST: "::1" }), "::1");
+    assert.equal(hostFromEnvironment({ DRAFT_REVIEW_HOST: "0.0.0.0", PAPER_PAL_HOST: "0.0.0.0" }), "127.0.0.1");
+    assert.equal(hostFromEnvironment({ DRAFT_REVIEW_HOST: "0.0.0.0", MARGIN_HOST: "::1" }), "::1");
   });
 
   it("keeps an existing project working: old config name, old state directory, old state", async () => {
@@ -85,7 +85,7 @@ describe("names: new first, pre-rename names as a fallback", () => {
     assert.equal((await apiOk(server, "/api/bootstrap")).title, "New name wins");
   });
 
-  it("falls back to the old remembered-project file and the old host variable", async () => {
+  it("reads legacy workspace pointers but uses the Margin host variable", async () => {
     const project = await makeProject();
     const fakeApp = await makeTempDir();
     await fs.writeFile(path.join(fakeApp, LEGACY_LOCAL_POINTER_NAME), JSON.stringify({ repo: project.root }), "utf8");
@@ -95,7 +95,7 @@ describe("names: new first, pre-rename names as a fallback", () => {
     await fs.writeFile(path.join(fakeApp, LOCAL_POINTER_NAME), JSON.stringify({ repo: other.root }), "utf8");
     assert.equal((await loadReviewConfig({ appRoot: fakeApp, argv: [], cwd: fakeApp, env: {} })).repoRoot, other.root);
 
-    const server = await startServer(project.root, { env: { DRAFT_REVIEW_HOST: "localhost" } });
+    const server = await startServer(project.root, { env: { MARGIN_HOST: "localhost" } });
     assert.match(server.output(), /running at http:\/\/localhost:/);
   });
 
@@ -105,10 +105,10 @@ describe("names: new first, pre-rename names as a fallback", () => {
     assert.deepEqual((await fs.readdir(root)).sort(), [STATE_DIR_NAME, CONFIG_NAME, "main.tex"].sort());
   });
 
-  it("honours PAPER_PAL_PORT and lets --port win", async () => {
+  it("honours MARGIN_PORT and lets --port win", async () => {
     const project = await makeProject();
-    assert.equal((await loadReviewConfig({ appRoot, argv: ["--repo", project.root], env: { PAPER_PAL_PORT: "4439" } })).port, 4439);
-    assert.equal((await loadReviewConfig({ appRoot, argv: ["--repo", project.root, "--port", "0"], env: { PAPER_PAL_PORT: "4439" } })).port, 0);
+    assert.equal((await loadReviewConfig({ appRoot, argv: ["--repo", project.root], env: { MARGIN_PORT: "4439" } })).port, 4439);
+    assert.equal((await loadReviewConfig({ appRoot, argv: ["--repo", project.root, "--port", "0"], env: { MARGIN_PORT: "4439" } })).port, 0);
     assert.equal((await loadReviewConfig({ appRoot, argv: ["--repo", project.root], env: {} })).port, 4317);
     await assert.rejects(loadReviewConfig({ appRoot, argv: ["--repo", project.root, "--port", "99999"], env: {} }), /Invalid port/);
   });
@@ -124,40 +124,35 @@ describe("setup: non-interactive, JSON, exit codes", () => {
     assert.equal(output.configPath, path.join(root, CONFIG_NAME));
     assert.equal(output.project, root);
     assert.equal(output.defaultDocument, "main.tex");
-    assert.equal(output.provider, "anthropic");
-    assert.deepEqual(output.providerStatus, { decidedBy: "flag", model: "some-model", available: false, reason: "Set ANTHROPIC_API_KEY in .env." });
+    assert.equal(output.mode, "manual-review");
+    assert.deepEqual(output.formats, ["markdown", "latex"]);
+    assert.ok(output.notes.some((note) => note.includes("ignored")));
     assert.equal(output.compile, false);
     assert.equal(output.compileStatus.decidedBy, "flag");
     assert.deepEqual(output.next, [`npm run doctor -- --repo ${root}`, `npm start -- --repo ${root}`]);
     const config = JSON.parse(await fs.readFile(output.configPath, "utf8"));
-    assert.equal(config.agent.provider, "anthropic");
-    assert.deepEqual(config.anthropic, { model: "some-model", chatModel: "chat-model" });
-    assert.equal(config.agent.reviewLanguage, "German");
+    assert.deepEqual(config.agent, { enabled: false });
+    assert.equal(config.anthropic, undefined);
     assert.equal(config.codex, undefined);
     assert.ok(!JSON.stringify(config).match(/apiKey"|"key"|token/i));
     // The file it wrote loads.
     await loadReviewConfig({ appRoot, argv: ["--repo", root], env: {} });
-    // Setup writes a subset of the example configuration: every agent field
-    // it writes is in the example, and the only one it leaves to its default
-    // is guidanceFiles (unset means "AGENTS.md / CLAUDE.md when they exist").
-    const example = JSON.parse(await fs.readFile(path.join(appRoot, "paper-pal.config.example.json"), "utf8"));
-    assert.deepEqual(Object.keys(example.agent).filter((key) => !(key in config.agent)), ["guidanceFiles"]);
+    // Setup writes only review settings; legacy provider fields are not needed.
+    const example = JSON.parse(await fs.readFile(path.join(appRoot, "margin.config.example.json"), "utf8"));
     assert.deepEqual(Object.keys(config.agent).filter((key) => !(key in example.agent)), []);
-    assert.equal(config.agent.promptMode, example.agent.promptMode);
+    assert.equal(example.agent.enabled, false);
   });
 
-  it("chooses the provider by itself: an installed CLI, else a provider with a key, else codex with a note", async () => {
+  it("does not choose or require an AI provider", async () => {
     const cli = json(runSetup([await texProject({ "main.tex": article }), "--json", "--no-remember"], { env: { ...noAgents, CLAUDE_BIN: process.execPath } }));
-    assert.equal(cli.provider, "claude");
-    assert.equal(cli.providerStatus.decidedBy, "auto");
+    assert.equal(cli.mode, "manual-review");
+    assert.equal(cli.provider, undefined);
     const keyed = json(runSetup([await texProject({ "main.tex": article }), "--json", "--no-remember"], { env: { ...noAgents, DEEPSEEK_API_KEY: "sk-anything-123456" } }));
-    assert.equal(keyed.provider, "deepseek");
-    assert.equal(keyed.providerStatus.reason, `Set deepseek.model in ${CONFIG_NAME}.`);
+    assert.equal(keyed.provider, undefined);
+    assert.equal(keyed.mode, "manual-review");
     const none = json(runSetup([await texProject({ "main.tex": article }), "--json", "--no-remember"], { env: { ...noAgents } }));
-    assert.equal(none.provider, "codex");
-    assert.equal(none.providerStatus.decidedBy, "fallback");
-    assert.equal(none.providerStatus.available, false);
-    assert.ok(none.notes.some((note) => /No agent CLI/.test(note)));
+    assert.equal(none.mode, "manual-review");
+    assert.equal(none.provider, undefined);
   });
 
   it("turns compilation on only when latexmk is installed, unless told otherwise", async () => {
@@ -221,7 +216,7 @@ describe("setup: non-interactive, JSON, exit codes", () => {
     assert.equal(result.status, 5);
     assert.deepEqual(json(result).error, {
       code: "several_main_tex",
-      message: "Several files could be the manuscript entry point. Pass --main <file.tex> to choose one:",
+      message: "Several files could be the manuscript entry point. Pass --main <file.md|file.tex> to choose one:",
       candidates: ["a/paper.tex", "b/poster.tex"],
     });
     assert.ok(!existsSync(path.join(root, CONFIG_NAME)));
@@ -246,17 +241,17 @@ describe("setup: non-interactive, JSON, exit codes", () => {
       encoding: "utf8", timeout: 20_000, stdio: ["inherit", "pipe", "pipe"], env: { ...process.env, ...testEnvironment },
     });
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /Paper Pal is configured for/);
+    assert.match(result.stdout, /Margin is configured for/);
   });
 });
 
 describe("doctor", () => {
-  it("--json lists every check; only the default provider being unavailable is an error", async () => {
+  it("--json checks the local workspace without requiring legacy providers", async () => {
     const project = await makeProject({ config: { agent: { enabled: true, provider: "openai" }, openai: { model: "m" } } });
     const broken = runDoctor(["--repo", project.root, "--json"], { env: { ...noAgents } });
-    assert.equal(broken.status, 1);
+    assert.equal(broken.status, 0);
     const report = json(broken);
-    assert.equal(report.ok, false);
+    assert.equal(report.ok, true);
     const byId = Object.fromEntries(report.checks.map((item) => [item.id, item]));
     for (const item of report.checks) assert.deepEqual(Object.keys(item).sort(), ["detail", "fix", "id", "ok", "severity"]);
     assert.equal(byId.node.ok, true);
@@ -264,12 +259,8 @@ describe("doctor", () => {
     assert.equal(byId.config.ok, true);
     assert.equal(byId["main-document"].ok, true);
     assert.equal(byId.latex.ok, true, "compilation is disabled in this project, so a missing latexmk is not a failure");
-    assert.deepEqual(
-      { ok: byId["provider:openai"].ok, severity: byId["provider:openai"].severity, fix: byId["provider:openai"].fix },
-      { ok: false, severity: "error", fix: "Set OPENAI_API_KEY in .env." },
-    );
-    assert.deepEqual({ ok: byId["provider:codex"].ok, severity: byId["provider:codex"].severity }, { ok: false, severity: "info" });
-    assert.deepEqual(report.checks.filter((item) => !item.ok && item.severity === "error").map((item) => item.id), ["provider:openai"]);
+    assert.equal(byId.review.ok, true);
+    assert.equal(report.checks.some((item) => item.id.startsWith("provider:")), false);
 
     const fixed = runDoctor(["--repo", project.root, "--json"], { env: { ...noAgents, OPENAI_API_KEY: "sk-doctor-test-0123456789" } });
     assert.equal(fixed.status, 0, fixed.stdout);
@@ -277,19 +268,15 @@ describe("doctor", () => {
     assert.ok(!fixed.stdout.includes("sk-doctor-test-0123456789"));
   });
 
-  it("says when the default CLI is installed but signed out", { skip: process.platform === "win32" && "uses a shell script as the CLI" }, async () => {
+  it("does not invoke an installed legacy CLI", { skip: process.platform === "win32" && "uses a shell script as the CLI" }, async () => {
     const bin = await makeTempDir("bin-");
     const codex = path.join(bin, "codex");
-    await fs.writeFile(codex, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo codex-cli 0.0.0; exit 0; fi\necho 'Not logged in'\nexit 1\n", { mode: 0o755 });
+    const marker = path.join(bin, "called");
+    await fs.writeFile(codex, `#!/bin/sh\ntouch "${marker}"\nexit 1\n`, { mode: 0o755 });
     const project = await makeProject({ config: { agent: { enabled: true, provider: "codex" } } });
     const result = runDoctor(["--repo", project.root, "--json"], { env: { ...noAgents, CODEX_BIN: codex } });
-    assert.equal(result.status, 1, result.stdout);
-    const byId = Object.fromEntries(json(result).checks.map((item) => [item.id, item]));
-    assert.equal(byId["provider:codex"].ok, true);
-    assert.deepEqual(
-      { ok: byId["signin:codex"].ok, severity: byId["signin:codex"].severity, fix: byId["signin:codex"].fix },
-      { ok: false, severity: "error", fix: "Run \"codex login\" in a terminal." },
-    );
+    assert.equal(result.status, 0, result.stdout);
+    assert.equal(existsSync(marker), false);
   });
 
   it("a missing LaTeX program is an error only when compilation is enabled", async () => {
@@ -313,7 +300,7 @@ describe("doctor", () => {
     assert.match(human.stdout, /✗ config:/);
   });
 
-  it("--ping sends a one-token request through the adapter", async () => {
+  it("legacy --ping never sends a model request", async () => {
     const { startMockApi } = await import("./helpers.mjs");
     const mock = await startMockApi();
     const project = await makeProject({ config: { agent: { enabled: true, provider: "ollama" }, ollama: { model: "local", baseUrl: `${mock.origin}/v1` } } });
@@ -324,32 +311,20 @@ describe("doctor", () => {
       child.on("close", (status) => resolve({ status, stdout }));
     });
     assert.equal(result.status, 0, result.stdout);
-    const checks = JSON.parse(result.stdout).checks;
-    const ping = checks.find((item) => item.id === "ping:ollama");
-    assert.equal(ping.ok, true);
-    const posts = mock.requests.filter((request) => request.body?.max_tokens !== undefined);
-    assert.equal(posts.length, 1);
-    assert.equal(posts[0].body.max_tokens, 1);
-    // The keyless local endpoint was probed and answered.
-    const reach = checks.find((item) => item.id === "reach:ollama");
-    assert.deepEqual({ ok: reach.ok, severity: reach.severity, fix: reach.fix }, { ok: true, severity: "warn", fix: null });
+    assert.equal(mock.requests.length, 0);
   });
 
-  it("warns, without failing, when a model is set for Ollama but nothing is listening", async () => {
+  it("does not probe configured legacy model endpoints", async () => {
     const project = await makeProject({ config: { agent: { enabled: true, provider: "ollama" }, ollama: { model: "local", baseUrl: "http://127.0.0.1:1/v1" } } });
     const started = Date.now();
     const result = runDoctor(["--repo", project.root, "--json"], { env: { ...noAgents } });
     assert.equal(result.status, 0, result.stdout);
     assert.ok(Date.now() - started < 8000, "the probe has a short timeout");
     const byId = Object.fromEntries(json(result).checks.map((item) => [item.id, item]));
-    assert.equal(byId["provider:ollama"].ok, true, "a configured model still counts as ready");
-    assert.deepEqual({ ok: byId["reach:ollama"].ok, severity: byId["reach:ollama"].severity }, { ok: false, severity: "warn" });
-    assert.match(byId["reach:ollama"].fix, /Start Ollama/);
-    assert.match(byId["reach:ollama"].detail, /127\.0\.0\.1:1/);
+    assert.equal(byId.review.ok, true);
     const human = runDoctor(["--repo", project.root], { env: { ...noAgents } });
-    assert.match(human.stdout, /! reach:ollama:/);
-    // Providers that need a key, and ones that are not set up, are never probed.
-    assert.deepEqual(Object.keys(byId).filter((id) => id.startsWith("reach:")), ["reach:ollama"]);
+    assert.match(human.stdout, /Manual Markdown and LaTeX review/);
+    assert.deepEqual(Object.keys(byId).filter((id) => id.startsWith("reach:")), []);
   });
 });
 
@@ -376,8 +351,8 @@ describe("what a project configuration may name", () => {
       });
     }
     // Naming the variable is fine; so is an empty placeholder.
-    const { config } = await load({ openai: { model: "m", apiKeyEnv: "PAPER_PAL_LAB_KEY", apiKey: "" } });
-    assert.equal(config.openai.apiKeyEnv, "PAPER_PAL_LAB_KEY");
+    const { config } = await load({ openai: { model: "m", apiKeyEnv: "MARGIN_LAB_KEY", apiKey: "" } });
+    assert.equal(config.openai.apiKeyEnv, "MARGIN_LAB_KEY");
   });
 
   it("the server exits with that message instead of starting", async () => {
@@ -385,22 +360,22 @@ describe("what a project configuration may name", () => {
     await assert.rejects(startServer(project.root), /looks like a credential: openai\.apiKey/);
   });
 
-  it("limits latex.command to known programs unless PAPER_PAL_ALLOW_CUSTOM_LATEX=1", async () => {
+  it("limits latex.command to known programs unless MARGIN_ALLOW_CUSTOM_LATEX=1", async () => {
     for (const command of ["latexmk", "pdflatex", "xelatex", "lualatex", "tectonic", "make"]) {
       assert.equal((await load({ latex: { enabled: false, command } })).config.latex.command, command);
     }
     for (const command of ["sh", "/usr/bin/latexmk", "./latexmk", "latexmk; rm -rf ~", "node"]) {
       await assert.rejects(load({ latex: { enabled: false, command } }), /may only name one of: latexmk, pdflatex/);
     }
-    assert.equal((await load({ latex: { enabled: false, command: "/opt/tex/bin/latexmk" } }, { PAPER_PAL_ALLOW_CUSTOM_LATEX: "1" })).config.latex.command, "/opt/tex/bin/latexmk");
+    assert.equal((await load({ latex: { enabled: false, command: "/opt/tex/bin/latexmk" } }, { MARGIN_ALLOW_CUSTOM_LATEX: "1" })).config.latex.command, "/opt/tex/bin/latexmk");
   });
 
-  it("limits codex.command / claude.command to a bare name unless PAPER_PAL_ALLOW_CUSTOM_COMMANDS=1", async () => {
+  it("limits codex.command / claude.command to a bare name unless MARGIN_ALLOW_CUSTOM_COMMANDS=1", async () => {
     assert.equal((await load({ codex: { command: "codex-nightly" } })).config.codex.command, "codex-nightly");
     for (const raw of [{ codex: { command: "/tmp/evil" } }, { claude: { command: "claude --dangerously-skip-permissions" } }, { codex: { command: "..\\evil.cmd" } }, { claude: { command: "-p" } }]) {
       await assert.rejects(load(raw), /may only give a bare program name/);
     }
-    const allowed = await load({ codex: { command: "/opt/tools/my codex" } }, { PAPER_PAL_ALLOW_CUSTOM_COMMANDS: "1" });
+    const allowed = await load({ codex: { command: "/opt/tools/my codex" } }, { MARGIN_ALLOW_CUSTOM_COMMANDS: "1" });
     assert.equal(allowed.config.codex.command, "/opt/tools/my codex");
   });
 
@@ -409,22 +384,22 @@ describe("what a project configuration may name", () => {
     await assert.rejects(load({ openai: { baseUrl: "ftp://x" } }), /http\(s\) URL/);
     assert.equal((await load({ openai: { baseUrl: "http://localhost:8080/v1/" } })).config.openai.baseUrl, "http://localhost:8080/v1");
     assert.equal((await load({ openai: { baseUrl: "https://api.openai.com/v1" } })).config.openai.baseUrl, "https://api.openai.com/v1");
-    assert.equal((await load({ openai: { baseUrl: "https://proxy.example/v1" } }, { PAPER_PAL_ALLOW_PROJECT_BASE_URL: "1" })).config.openai.baseUrl, "https://proxy.example/v1");
+    assert.equal((await load({ openai: { baseUrl: "https://proxy.example/v1" } }, { MARGIN_ALLOW_PROJECT_BASE_URL: "1" })).config.openai.baseUrl, "https://proxy.example/v1");
     await assert.rejects(load({ custom: { protocol: "grpc" } }), /protocol must be one of/);
     await assert.rejects(load({ custom: { apiKeyEnv: "sk-this-is-a-key-not-a-name" } }), /NAME of an environment variable/);
     // A project file may not pick an unrelated secret to send to the API host.
     await assert.rejects(load({ openai: { model: "m", apiKeyEnv: "AWS_SECRET_ACCESS_KEY" } }), /may only name a provider key variable/);
     await assert.rejects(load({ openai: { model: "m", apiKeyEnv: "GITHUB_TOKEN" } }), /may only name a provider key variable/);
     assert.equal((await load({ openai: { model: "m", apiKeyEnv: "OPENROUTER_API_KEY" } })).config.openai.apiKeyEnv, "OPENROUTER_API_KEY");
-    assert.equal((await load({ openai: { model: "m", apiKeyEnv: "MY_LAB_KEY" } }, { PAPER_PAL_ALLOW_PROJECT_KEY_ENV: "1" })).config.openai.apiKeyEnv, "MY_LAB_KEY");
+    assert.equal((await load({ openai: { model: "m", apiKeyEnv: "MY_LAB_KEY" } }, { MARGIN_ALLOW_PROJECT_KEY_ENV: "1" })).config.openai.apiKeyEnv, "MY_LAB_KEY");
     await assert.rejects(load({ anthropic: { maxTokens: -5 } }), /positive integer/);
     await assert.rejects(load({ agent: { provider: "gemini" } }), /agent\.provider is "gemini"/);
   });
 });
 
 describe("command line entry points", () => {
-  it("paper-pal dispatches to the scripts", async () => {
-    const bin = path.join(appRoot, "bin", "paper-pal.mjs");
+  it("margin dispatches to the scripts", async () => {
+    const bin = path.join(appRoot, "bin", "margin.mjs");
     const run = (args, options = {}) => spawnSync(process.execPath, [bin, ...args], { encoding: "utf8", env: { ...process.env, ...testEnvironment }, ...options });
     assert.equal(run(["--version"]).stdout.trim(), JSON.parse(await fs.readFile(path.join(appRoot, "package.json"), "utf8")).version);
     assert.match(run(["--help"]).stdout, /setup .*doctor .*start .*demo/s);
@@ -443,10 +418,10 @@ describe("command line entry points", () => {
 
   it("package.json exposes the documented scripts and the bin", async () => {
     const pkg = JSON.parse(await fs.readFile(path.join(appRoot, "package.json"), "utf8"));
-    assert.equal(pkg.name, "paper-pal");
+    assert.equal(pkg.name, "margin");
     assert.equal(pkg.private, undefined);
     assert.equal(pkg.license, "MIT");
-    assert.deepEqual(pkg.bin, { "paper-pal": "bin/paper-pal.mjs" });
+    assert.deepEqual(pkg.bin, { "margin": "bin/margin.mjs" });
     for (const name of ["setup", "doctor", "start", "dev", "demo", "check", "test"]) assert.ok(pkg.scripts[name], name);
     assert.deepEqual(Object.keys(pkg.dependencies), ["katex"]);
   });
@@ -456,12 +431,12 @@ describe("command line entry points", () => {
     // `files` is a whitelist, so a new root module that is not listed would be missing from the tarball.
     const rootModules = (await fs.readdir(appRoot)).filter((name) => name.endsWith(".mjs"));
     for (const name of rootModules) assert.ok(pkg.files.includes(name), `${name} is not in package.json "files"`);
-    for (const entry of ["bin/", "public/", "schemas/", "examples/", "scripts/setup.mjs", "scripts/doctor.mjs", "scripts/demo.mjs", ".env.example", "paper-pal.config.example.json"]) {
+    for (const entry of ["bin/", "public/", "schemas/", "examples/", "scripts/setup.mjs", "scripts/doctor.mjs", "scripts/demo.mjs", ".env.example", "margin.config.example.json"]) {
       assert.ok(pkg.files.includes(entry), entry);
     }
     for (const entry of pkg.files.filter((value) => !value.includes("*"))) assert.ok(existsSync(path.join(appRoot, entry)), `${entry} does not exist`);
     assert.deepEqual(pkg.files.filter((entry) => /^(tests|[.]github|docs\/images|node_modules)\b/.test(entry)), []);
-    assert.match(pkg.repository.url, /github[.]com\/claire1217\/paper-pal/i);
+    assert.equal(pkg.repository.url, "git+https://github.com/Becomingw/Margin.git", "the independent repository is advertised");
   });
 
   // Starts the demo and resolves once the banner shows the port and the copy.
@@ -503,16 +478,16 @@ describe("command line entry points", () => {
       assert.ok(existsSync(path.join(copy, CONFIG_NAME)));
       const health = await (await fetch(`http://127.0.0.1:${port}/api/health`)).json();
       assert.equal(health.ok, true);
-      assert.equal(health.defaultProvider, "codex");
-      assert.equal(health.providers.find((item) => item.id === "codex").available, false);
+      assert.equal(health.agent.enabled, false);
+      assert.deepEqual(health.formats, ["markdown", "latex"]);
       assert.equal(health.latex.enabled, false);
       assert.equal((await fetch(`http://127.0.0.1:${port}/`)).status, 200);
-      assert.match(demo.output, /Agent:\s+Codex - not ready\./);
+      assert.match(demo.output, /AI:\s+disabled/);
       assert.match(demo.output, /Press Ctrl\+C to stop/);
       demo.child.stdin.write("stop\n");
       await assertStoppedAndClean(demo);
     } finally {
-      if (demo.child.exitCode === null) demo.child.kill("SIGKILL");
+      if (demo.child.exitCode === null) { demo.child.stdin.write("stop\n"); await new Promise((resolve) => demo.child.once("exit", resolve)); }
     }
   });
 
@@ -531,7 +506,7 @@ describe("starting before any setup", () => {
   after(cleanupAll);
 
   // A developer's own remembered project would be opened instead of failing.
-  const remembered = ["paper-pal.local.json", "review.local.json"].some((name) => existsSync(path.join(appRoot, name)));
+  const remembered = ["margin.local.json", "paper-pal.local.json", "review.local.json"].some((name) => existsSync(path.join(appRoot, name)));
   it("says to run setup on the paper, without a stack trace and without naming the current folder", { skip: remembered && "this checkout remembers a project" }, async () => {
     const empty = await makeTempDir("nothing-");
     const result = spawnSync(process.execPath, [path.join(appRoot, "server.mjs"), "--port", "0"], {
@@ -548,13 +523,13 @@ describe("starting before any setup", () => {
 });
 
 describe("start banner", () => {
-  it("names the app, version, URL, project and the default provider's readiness", async () => {
+  it("names the app, version, URL, project and manual review mode", async () => {
     const project = await makeProject({ config: { title: "Banner Paper", agent: { enabled: true, provider: "deepseek" } } });
     const server = await startServer(project.root, { env: { DEEPSEEK_API_KEY: "" } });
     const output = server.output();
-    assert.match(output, /^Paper Pal \d+\.\d+\.\d+ is running at http:\/\/127\.0\.0\.1:\d+$/m);
+    assert.match(output, /^Margin \d+\.\d+\.\d+ is running at http:\/\/127\.0\.0\.1:\d+$/m);
     assert.match(output, /Project:\s+Banner Paper \(main\.tex\)/);
-    assert.match(output, /Agent:\s+DeepSeek API - not ready\. Set DEEPSEEK_API_KEY in \.env\./);
+    assert.match(output, /AI:\s+disabled/);
     assert.match(output, /Press Ctrl\+C to stop\./);
     assert.doesNotMatch(output, new RegExp(`:0\\b.*running|running at http://127\\.0\\.0\\.1:0\\b`), "--port 0 prints the real port");
   });

@@ -1,6 +1,7 @@
 # Third-party software and fonts
 
-Paper Pal itself is released under the [MIT License](LICENSE). It uses the
+Margin is released under the [MIT License](LICENSE); source attribution is in
+[NOTICE.md](NOTICE.md). It uses the
 following third-party components. Each stays under its own licence.
 
 ## KaTeX
@@ -43,7 +44,7 @@ a font CDN.
   [public/fonts/LICENSE-SourceSerif4.txt](public/fonts/LICENSE-SourceSerif4.txt).
 
 The OFL allows bundling and redistribution with software, provided the fonts
-are not sold by themselves and the licence text travels with them. Paper Pal
+are not sold by themselves and the licence text travels with them. Margin
 does not modify the font files.
 
 ## Development and test tooling

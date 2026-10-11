@@ -3,12 +3,12 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
-import { api, apiOk, cleanupAll, commentOn, getDocument, makeProject, saveBlock, startServer, stateDirectory, waitForRequest } from "./helpers.mjs";
+import { api, apiOk, cleanupAll, getDocument, makeProject, saveBlock, startServer, stateDirectory } from "./helpers.mjs";
 
 after(cleanupAll);
 
 const sha = (text) => createHash("sha256").update(text).digest("hex");
-const NOT_UTF8 = /^This file is not UTF-8, so Paper Pal will not modify it\. Convert it to UTF-8 to edit: iconv -f latin1 -t utf-8 \S+\.tex > \S+\.utf8\.tex$/;
+const NOT_UTF8 = /^This file is not UTF-8, so Margin will not modify it\. Convert it to UTF-8 to edit: iconv -f latin1 -t utf-8 \S+\.tex > \S+\.utf8\.tex$/;
 
 const MAIN = "\\documentclass{article}\n\\begin{document}\n\\input{sections/latin1}\n\\input{sections/utf8}\n\\input{sections/reencoded}\n\\end{document}\n";
 // Windows-1252 / Latin-1 bytes with CRLF line ends: 0xE9 and 0xEF are not UTF-8.
@@ -107,66 +107,43 @@ describe("a source file that is not UTF-8 is read-only", () => {
     await assertUntouched(latin1File, latin1Before, "tracked change");
   });
 
-  it("refuses a new rewrite request for the file", async () => {
+  it("refuses a new review comment for the file", async () => {
     const document = await getDocument(server, "sections/latin1.tex");
     const block = document.blocks.find((item) => item.raw.startsWith("Second paragraph"));
-    const result = await api(server, "/api/rewrite", {
+    const result = await api(server, "/api/review/comment", {
       method: "POST",
-      body: { path: document.path, etag: document.etag, blockIndex: block.index, blockId: block.id, start: 0, end: 6, comment: "Rewrite this." },
+      body: { path: document.path, etag: document.etag, start: block.start, end: block.start + 6, body: "Review this." },
     });
     assert.equal(result.status, 409);
     assert.match(result.value.error, NOT_UTF8);
-    assert.deepEqual(await apiOk(server, "/api/requests"), []);
     await assertUntouched(latin1File, latin1Before, "rewrite");
   });
 
-  it("refuses to accept a proposal when the file stopped being UTF-8 after the proposal was made", async () => {
+  it("refuses a review save when the file stopped being UTF-8 after opening", async () => {
     const file = path.join(project.root, "sections", "reencoded.tex");
-    const needle = "another program re-encodes later";
-    const created = await commentOn(server, "sections/reencoded.tex", needle, "Make this louder.");
-    await apiOk(server, "/api/request/process", { method: "POST", body: { id: created.id } });
-    await waitForRequest(server, created.id, (request) => request.status === "proposed", "proposal");
+    const opened = await apiOk(server, "/api/review?path=sections/reencoded.tex");
     await fs.writeFile(file, Buffer.from(REENCODED_TEXT, "latin1"));
     const reencoded = await snapshot(file);
 
-    const result = await api(server, "/api/request/accept", { method: "POST", body: { id: created.id } });
+    const result = await api(server, "/api/review/save", { method: "POST", body: { path: "sections/reencoded.tex", etag: opened.document.revisions.at(-1).hash, text: "New source" } });
     assert.equal(result.status, 409);
     assert.match(result.value.error, NOT_UTF8);
     await assertUntouched(file, reencoded, "accept");
-    const [request] = (await apiOk(server, "/api/requests")).filter((item) => item.id === created.id);
-    assert.equal(request.status, "proposed", "a refused accept does not resolve the proposal");
-    await apiOk(server, "/api/request/reject", { method: "POST", body: { id: created.id } });
   });
 
-  it("refuses a linked change set as a whole when one target is not UTF-8", async () => {
-    const needle = "The first UTF-8 paragraph stays as it is.";
-    const created = await commentOn(server, "sections/utf8.tex", needle, "Make this louder.");
-    await apiOk(server, "/api/request/process", { method: "POST", body: { id: created.id } });
-    await waitForRequest(server, created.id, (request) => request.status === "proposed", "proposal");
-
-    // The fake agent finds no linked targets, so the confirmed set is written
-    // into the stored request, as the link search would have left it.
-    const latin1 = await getDocument(server, "sections/latin1.tex");
-    const selectedText = "Second paragraph to edit here.";
-    const absoluteStart = latin1.source.indexOf(selectedText);
-    const requestFile = path.join(project.root, stateDirectory, "requests", `${created.id}.json`);
-    const stored = JSON.parse(await fs.readFile(requestFile, "utf8"));
-    stored.proposal.primaryReviewStatus = "confirmed";
-    stored.proposal.linkedChanges = [{
-      id: "linked_1", path: "sections/latin1.tex", status: "confirmed", required: true,
-      sourceEtag: latin1.etag, absoluteStart, absoluteEnd: absoluteStart + selectedText.length,
-      selectedText, replacementText: "Second paragraph, edited.", summary: "test",
-    }];
-    await fs.writeFile(requestFile, JSON.stringify(stored), "utf8");
+  it("refuses a document import as a whole when one source is not UTF-8", async () => {
     const utf8Before = await snapshot(utf8File);
 
-    const result = await api(server, "/api/request/apply-linked", { method: "POST", body: { id: created.id } });
+    const result = await api(server, "/api/review/import", { method: "POST", body: { files: [
+      { path: "utf8.tex", content: Buffer.from(UTF8_TEXT).toString("base64") },
+      { path: "latin1.tex", content: LATIN1.toString("base64") },
+    ] } });
     assert.equal(result.status, 409);
     assert.match(result.value.error, NOT_UTF8);
     await assertUntouched(latin1File, latin1Before, "linked apply (Latin-1 target)");
     await assertUntouched(utf8File, utf8Before, "linked apply (UTF-8 target of the same set)");
     assert.equal((await apiOk(server, "/api/undo")).available, false, "a refused set leaves nothing to undo");
-    await apiOk(server, "/api/request/reject", { method: "POST", body: { id: created.id } });
+    assert.equal((await fs.readdir(project.root)).includes("imports"), false);
   });
 
   it("refuses an undo that would restore a file that is not UTF-8, for every file of the action", async () => {
@@ -278,15 +255,15 @@ describe("a UTF-8 file changes only in the edited span", () => {
     });
   }
 
-  it("accepts a proposal byte-exactly and undoes it byte-exactly", async () => {
+  it("saves a review revision byte-exactly and restores it byte-exactly", async () => {
     const beforeBytes = await reset();
     const needle = "the one to edit 😀 here";
-    const created = await commentOn(server, "tricky.tex", needle, "Make this louder.");
-    await apiOk(server, "/api/request/process", { method: "POST", body: { id: created.id } });
-    await waitForRequest(server, created.id, (request) => request.status === "proposed", "proposal");
-    await apiOk(server, "/api/request/accept", { method: "POST", body: { id: created.id } });
+    const opened = await apiOk(server, "/api/review?path=tricky.tex");
+    const base = opened.document.revisions.at(-1);
+    const start = base.source.indexOf(needle);
+    const saved = await apiOk(server, "/api/review/save", { method: "POST", body: { path: "tricky.tex", etag: base.hash, start, end: start + needle.length, text: needle.toUpperCase() } });
     assertOnlySpanChanged(beforeBytes, await fs.readFile(file), needle, needle.toUpperCase());
-    await apiOk(server, "/api/undo", { method: "POST" });
+    await apiOk(server, "/api/review/restore", { method: "POST", body: { path: "tricky.tex", etag: saved.document.revisions.at(-1).hash, revisionId: base.id } });
     assert.ok((await fs.readFile(file)).equals(beforeBytes), "undo restores the exact bytes");
   });
 
@@ -351,8 +328,7 @@ describe("structure plans and files that are not UTF-8", () => {
     const { structure } = await confirmPlan();
     const latin1Section = structure.sections.find((section) => section.sources.some((source) => source.path === "sections/latin1.tex"));
     const refused = await api(server, "/api/structure/section-rewrite", { method: "POST", body: { sectionId: latin1Section.id, autoProcess: false } });
-    assert.equal(refused.status, 409);
-    assert.match(refused.value.error, NOT_UTF8);
+    assert.equal(refused.status, 410);
 
     const document = await getDocument(server, "sections/utf8.tex");
     const block = document.blocks.find((item) => item.raw.startsWith("The second UTF-8 paragraph"));

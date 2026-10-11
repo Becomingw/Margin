@@ -1,6 +1,6 @@
 # LaTeX conventions
 
-Paper Pal does not run TeX to show your text. It reads the `.tex` source with
+Margin does not run TeX to show your text. It reads the `.tex` source with
 its own small parser, cuts it into blocks, and shows each block as prose. Every
 block keeps its exact character range in the file. An edit or an accepted
 proposal replaces only that range, so your preamble, macros, comments and
@@ -11,7 +11,7 @@ understands, what it hides, and where it gives up.
 
 ## Files
 
-- The entry point is `defaultDocument` in `.paper-pal.json` (usually
+- The entry point is `defaultDocument` in `.margin.json` (usually
   `main.tex`).
 - `\input{file}`, `\include{file}`, `\subfile{file}`, `\import{dir/}{file}` and
   `\subimport{dir/}{file}` (also `\inputfrom`, `\subinputfrom`, `\includefrom`,
@@ -38,7 +38,7 @@ understands, what it hides, and where it gives up.
   are hidden).
 - A file that is not valid UTF-8 (Latin-1, Windows-1252) is opened read-only.
   It is shown with `�` marks in place of the bytes that could not be read,
-  a notice names the line, and Paper Pal never writes it: edits, comments,
+  a notice names the line, and Margin never writes it: edits, comments,
   Accept, linked change sets, Undo and structure reverts are refused for it.
   The other files of the project work as usual. Convert the file to edit it:
   `iconv -f latin1 -t utf-8 file.tex > file.utf8.tex`, then replace the
@@ -213,14 +213,14 @@ edit changes more than the edited construct, that is a bug. Please report it
 with a minimal `.tex` snippet that does not contain your unpublished text.
 `tests/fixtures/realworld/` is the manuscript these rules are tested against.
 
-## Optional macros Paper Pal recognises
+## Optional macros Margin recognises
 
-Nothing here is required. Paper Pal never adds these macros to your files.
+Nothing here is required. Margin never adds these macros to your files.
 
 ### Tracked changes: `\chadd` and `\chdel`
 
 If your source contains `\chadd{new text}` and `\chdel{old text}`, for example
-from a co-author who marks edits by hand, Paper Pal shows additions in green
+from a co-author who marks edits by hand, Margin shows additions in green
 and deletions in red struck through. Adjacent macros separated only by white
 space form one change group with an Accept and a Reject button:
 
@@ -253,20 +253,18 @@ If you have the `ulem` package, `\usepackage[normalem]{ulem}` and
 (That variant was not test-compiled for this page; the two above were, with
 `latexmk -pdf` and TeX Live.)
 
-Paper Pal's own proposals do not use these macros. A proposal lives in
-`.paper-pal/` until you accept it, and then the accepted text replaces the old
-text directly.
+Margin's manual revisions do not use these macros. Source changes and their
+reasons are recorded in `.margin/review.json` separately from the manuscript.
 
 ### Wrapper environments: `approvedcontent` and `draftcontent`
 
 Some authors wrap finished and unfinished parts of a manuscript in marker
-environments. Paper Pal treats `approvedcontent` and `draftcontent` as
+environments. Margin treats `approvedcontent` and `draftcontent` as
 transparent wrappers: the `\begin{...}` and `\end{...}` lines are hidden and
 the text inside is parsed as normal paragraphs, headings and lists.
 
-They have **no effect on review status** in Paper Pal. Which text counts as
-confirmed is stored in `.paper-pal/state.json` when you confirm a passage in
-the page, or set per file with `approvedDocuments` in `.paper-pal.json`.
+They have **no effect on manual review status** in Margin. Comment status and
+revision history are recorded separately in `.margin/review.json`.
 
 Definitions that change nothing in the PDF:
 

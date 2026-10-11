@@ -16,7 +16,7 @@ async function api(endpoint, options = {}) {
   const response = await fetch(`${baseUrl}${endpoint}`, {
     ...options,
     // State-changing requests must be JSON and carry the app's custom header.
-    headers: options.body ? { "Content-Type": "application/json", "X-Paper-Pal": "1" } : undefined,
+    headers: options.body ? { "Content-Type": "application/json", "X-Margin": "1" } : undefined,
   });
   const value = await response.json();
   if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
@@ -49,7 +49,7 @@ try {
   const generatedConfig = JSON.parse(await fs.readFile(generatedConfigPath, "utf8"));
   assert.equal(generatedConfig.defaultDocument, "main.tex");
   assert.equal(generatedConfig.latex.enabled, false);
-  assert.equal(generatedConfig.agent.enabled, true);
+  assert.equal(generatedConfig.agent.enabled, false);
   generatedConfig.agent.enabled = false;
   generatedConfig.agent.autoProcessComments = false;
   await fs.writeFile(generatedConfigPath, `${JSON.stringify(generatedConfig, null, 2)}\n`, "utf8");
@@ -79,7 +79,7 @@ try {
   const bootstrap = await waitForServer();
   assert.equal(bootstrap.title, "Portable Fixture");
   assert.equal(bootstrap.defaultDocument, "main.tex");
-  assert.equal(bootstrap.chat.enabled, false);
+  assert.equal(bootstrap.agent.enabled, false);
   assert.ok(bootstrap.documents.some((item) => item.path === "main.tex"));
 
   const document = await api("/api/document?path=main.tex");
@@ -103,7 +103,7 @@ try {
   assert.equal(outside.status, 403);
 
   const withoutHeader = await fetch(`${baseUrl}/api/undo`, { method: "POST" });
-  assert.equal(withoutHeader.status, 403, "state-changing requests need the X-Paper-Pal header or a matching Origin");
+  assert.equal(withoutHeader.status, 403, "state-changing requests need the X-Margin header or a matching Origin");
   console.log("Portable configuration, editing, and source-root confinement passed.");
 } finally {
   if (server && server.exitCode === null) {

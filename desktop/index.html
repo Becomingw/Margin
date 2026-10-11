@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>Margin · 页边</title><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="home.css">
+</head><body>
+  <aside class="home-rail">
+    <a class="brand" href="/"><img src="brand.svg" alt="">Margin <small>页边</small></a>
+    <div class="rail-item"><svg class="icon" aria-hidden="true"><use href="icons.svg#folder" /></svg>我的工作区<span class="rail-dot"></span></div>
+    <div class="rail-note"><span class="eyebrow">LOCAL BY DESIGN</span><p>文档属于你。<br>思考留在本机。</p><span class="local-tag">● 本地工作区</span></div>
+  </aside>
+  <div class="home-content">
+    <header class="home-topbar"><span>工作区 / <strong>开始</strong></span><button id="home-theme" class="theme-button" aria-label="切换深浅主题"><svg class="icon" aria-hidden="true"><use href="icons.svg#sun" /></svg></button></header>
+    <main>
+      <div class="welcome"><span class="eyebrow">A LITTLE ROOM FOR THOUGHT</span><h1>让想法，<span>留在页边。</span></h1><p class="lead">安静地阅读，认真地批注。<br>从第一份草稿，到下一轮更好的表达。</p></div>
+      <div class="actions">
+        <button id="open-file" class="action-featured"><span class="action-icon"><svg class="icon" aria-hidden="true"><use href="icons.svg#file" /></svg></span><strong>打开文档</strong><span class="action-description">Markdown 或 LaTeX，直接开始审阅</span><span class="action-footer">保留原始格式 <svg class="icon" aria-hidden="true"><use href="icons.svg#arrow" /></svg></span></button>
+        <button id="open-folder"><span class="action-icon"><svg class="icon" aria-hidden="true"><use href="icons.svg#folder" /></svg></span><strong>打开项目</strong><span class="action-description">多份文档与资源，在同一个工作区</span><span class="action-footer">原位置保存 <svg class="icon" aria-hidden="true"><use href="icons.svg#arrow" /></svg></span></button>
+        <button id="new"><span class="action-icon"><svg class="icon" aria-hidden="true"><use href="icons.svg#plus" /></svg></span><strong>新建工作区</strong><span class="action-description">从一张空白的 Markdown 书页开始</span></button>
+        <button id="import-package"><span class="action-icon"><svg class="icon" aria-hidden="true"><use href="icons.svg#import" /></svg></span><strong>接续一次审阅</strong><span class="action-description">导入审阅包，带回批注与完整历史</span></button>
+      </div>
+      <section class="recent-section"><div class="recent-heading"><h2>最近打开</h2><span class="eyebrow">PICK UP WHERE YOU LEFT OFF</span></div><div id="recents"></div></section>
+      <p class="drop-hint"><svg class="icon" aria-hidden="true"><use href="icons.svg#import" /></svg>拖入文档、文件夹或审阅包，也可以从这里开始。</p>
+      <p id="status" role="status" aria-live="polite"></p>
+      <footer>MD & TEX <span>本地保存 · 无需账号 · 完整审阅记录</span></footer>
+    </main>
+  </div><script src="home.js"></script>
+</body></html>

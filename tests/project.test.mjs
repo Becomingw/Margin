@@ -21,8 +21,7 @@ describe("setup script", () => {
     const config = JSON.parse(await fs.readFile(path.join(root, configName), "utf8"));
     assert.equal(config.title, "Flag First");
     assert.equal(config.latex.enabled, false);
-    assert.equal(config.agent.reviewLanguage, "en");
-    assert.deepEqual(config.agent.terminologyFiles, []);
+    assert.deepEqual(config.agent, { enabled: false });
     assert.match(await fs.readFile(path.join(root, stateDirectory, ".gitignore"), "utf8"), /^\*$/m);
   });
 
@@ -52,7 +51,7 @@ describe("configuration", () => {
     assert.deepEqual(config.codex.guidanceFiles, []);
     assert.equal(config.codex.model, undefined, "no hard-coded model: the CLI default is used");
     assert.equal(config.codex.chatReasoningEffort, "medium");
-    assert.equal(config.agent.enabled, true);
+    assert.equal(config.agent.enabled, false);
   });
 
   it("reads agent.* first, codex.* as an alias, and copies terminologyFiles", async () => {
@@ -80,11 +79,12 @@ describe("configuration", () => {
   });
 
   it("loads the shipped example configuration", async () => {
-    const example = JSON.parse(await fs.readFile(path.join(appRoot, "paper-pal.config.example.json"), "utf8"));
+    const example = JSON.parse(await fs.readFile(path.join(appRoot, "margin.config.example.json"), "utf8"));
     const { config } = await load(example);
-    assert.equal(config.agent.provider, "codex");
-    assert.equal(config.codex.reviewLanguage, "en");
-    assert.deepEqual(config.codex.entryPoints, ["main.tex"]);
+    assert.equal(config.agent.enabled, false);
+    assert.equal(config.latex.enabled, false);
+    assert.equal(config.defaultDocument, "main.tex");
+    assert.equal(config.ui.initialDocument, "main.tex");
   });
 
   it("isInside handles names that merely start with two dots", () => {
@@ -102,7 +102,7 @@ describe("agent adapters", () => {
     const prompt = "PROMPT ".repeat(100);
     const schemaPath = path.join(appRoot, "schemas", "proposal-output.schema.json");
     // Codex gets a simplified copy of the schema written next to the output file.
-    const scratch = await fs.mkdtemp(path.join(tmpdir(), "paper-pal-argv-"));
+    const scratch = await fs.mkdtemp(path.join(tmpdir(), "margin-argv-"));
     after(() => fs.rm(scratch, { recursive: true, force: true }));
     for (const provider of AGENT_PROVIDERS) {
       const invocation = await buildAgentInvocation({
@@ -121,7 +121,7 @@ describe("agent adapters", () => {
   it("gives Codex a schema that strict structured output accepts", async () => {
     // The CLI passes --output-schema to the provider's strict mode, which refuses
     // the request outright over minLength, maxItems or $schema.
-    const root = await fs.mkdtemp(path.join(tmpdir(), "paper-pal-schema-"));
+    const root = await fs.mkdtemp(path.join(tmpdir(), "margin-schema-"));
     try {
       for (const name of ["proposal", "discussion", "link", "review"]) {
         const schemaPath = path.join(appRoot, "schemas", `${name}-output.schema.json`);
@@ -242,7 +242,7 @@ describe("running project", () => {
 
   it("explains a missing LaTeX command instead of failing with an empty log", async () => {
     const project = await makeProject({ config: { latex: { enabled: true, cwd: ".", command: "surely-not-latexmk-xyz", args: ["main.tex"] } } });
-    const server = await startServer(project.root, { env: { PAPER_PAL_ALLOW_CUSTOM_LATEX: "1" } });
+    const server = await startServer(project.root, { env: { MARGIN_ALLOW_CUSTOM_LATEX: "1" } });
     await apiOk(server, "/api/compile", { method: "POST" });
     const state = await waitFor(async () => {
       const value = await apiOk(server, "/api/compile");
@@ -266,7 +266,7 @@ describe("running project", () => {
     const config = JSON.parse(await fs.readFile(project.configPath, "utf8"));
     config.latex = { enabled: true, cwd: ".", command: process.execPath, args: [script] };
     await fs.writeFile(project.configPath, JSON.stringify(config), "utf8");
-    const server = await startServer(project.root, { env: { PAPER_PAL_ALLOW_CUSTOM_LATEX: "1" } });
+    const server = await startServer(project.root, { env: { MARGIN_ALLOW_CUSTOM_LATEX: "1" } });
     await apiOk(server, "/api/compile", { method: "POST" });
     const state = await waitFor(async () => {
       const value = await apiOk(server, "/api/compile");
@@ -287,7 +287,7 @@ describe("running project", () => {
     const config = JSON.parse(await fs.readFile(project.configPath, "utf8"));
     config.latex = { enabled: true, cwd: ".", command: process.execPath, args: [script] };
     await fs.writeFile(project.configPath, JSON.stringify(config), "utf8");
-    const server = await startServer(project.root, { env: { OPENROUTER_API_KEY: "sk-must-not-reach-latex", PAPER_PAL_ALLOW_CUSTOM_LATEX: "1" } });
+    const server = await startServer(project.root, { env: { OPENROUTER_API_KEY: "sk-must-not-reach-latex", MARGIN_ALLOW_CUSTOM_LATEX: "1" } });
     await apiOk(server, "/api/compile", { method: "POST" });
     const second = await apiOk(server, "/api/compile", { method: "POST" });
     assert.equal(second.status, "running");
@@ -322,7 +322,7 @@ describe("running project", () => {
 
   it("warns loudly when bound to a non-loopback host, and still checks Host", async () => {
     const project = await makeProject();
-    const server = await startServer(project.root, { env: { PAPER_PAL_HOST: "0.0.0.0", HOST: "should-be-ignored.example" } });
+    const server = await startServer(project.root, { env: { MARGIN_HOST: "0.0.0.0", HOST: "should-be-ignored.example" } });
     await waitFor(() => /WARNING: listening on 0\.0\.0\.0/.test(server.output()), { label: "warning" });
     assert.equal((await api(server, "/api/bootstrap")).status, 200);
   });

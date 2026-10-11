@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { schemaForResponseFormat } from "./api-adapter.mjs";
 import { APP_NAME, CONFIG_NAME, ENV } from "./names.mjs";
 
-// Paper Pal talks to an agent through one narrow contract: write the prompt to
+// Margin's retained adapter contract: write the prompt to
 // the child's stdin, run it read-only inside the repository, and end up with
 // the agent's final message in a file. Codex satisfies that contract natively
 // (`codex exec -` reads the prompt from stdin). Claude Code has no
@@ -123,7 +123,7 @@ function fallbackDirectories() {
   ];
 }
 
-// The API adapter ships with Paper Pal and runs on this Node.
+// The compatibility API adapter runs on this Node.
 const API_ADAPTER = fileURLToPath(new URL("./api-adapter.mjs", import.meta.url));
 
 function executableNames(command) {
@@ -197,7 +197,7 @@ export function providerCommand(provider, config) {
 
 /**
  * A `codex` or `claude` on PATH is sometimes a small wrapper script that adds
- * flags which switch the agent's sandbox or permission checks off. Paper Pal
+ * flags which switch the agent's sandbox or permission checks off. Margin
  * asks for a read-only agent, and such a wrapper can silently undo that, so
  * say so. Only small text files are inspected; a real binary is never read.
  */
@@ -267,7 +267,7 @@ export function apiKeyVariableNames(config = null, env = process.env) {
     if (configured) names.add(String(configured));
   }
   for (const name of Object.keys(env)) {
-    if (/^PAPER_PAL_.*_KEY$/.test(name)) names.add(name);
+    if (/^(?:MARGIN|PAPER_PAL)_.*_KEY$/.test(name)) names.add(name);
   }
   return names;
 }
@@ -288,6 +288,7 @@ export function rememberConfig(config) {
  */
 export function childEnvironment({ provider = null, config = knownConfig } = {}) {
   const env = { ...process.env };
+  delete env.MARGIN_DESKTOP_TOKEN;
   const keep = provider && PROVIDER_TABLE[provider]?.kind === "api"
     ? apiSettings(provider, config, process.env).apiKeyEnv
     : null;
@@ -300,7 +301,7 @@ export function childEnvironment({ provider = null, config = knownConfig } = {})
 /** Replace the literal value of every API key with "[redacted]". */
 export function redactSecrets(value, { config = knownConfig } = {}) {
   let text = String(value ?? "");
-  for (const name of apiKeyVariableNames(config, process.env)) {
+  for (const name of [...apiKeyVariableNames(config, process.env), "MARGIN_DESKTOP_TOKEN"]) {
     const secret = process.env[name];
     if (!secret || secret.length < 6) continue;
     text = text.split(secret).join("[redacted]");

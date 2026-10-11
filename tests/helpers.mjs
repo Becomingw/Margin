@@ -20,9 +20,10 @@ export const stateDirectory = STATE_DIR_NAME;
 // no .env file from the developer's checkout, no inherited bind address, and
 // the switch that lets a project file name the fake agent by absolute path.
 export const testEnvironment = {
-  PAPER_PAL_ENV_FILE: "none",
+  ...Object.fromEntries(Object.keys(process.env).filter((name) => /(?:_API_KEY$|^MARGIN_.*KEY$)/.test(name)).map((name) => [name, ""])),
+  MARGIN_ENV_FILE: "none",
+  MARGIN_DESKTOP_TOKEN: "",
   [ENV.host]: "",
-  [ENV.legacyHost]: "",
   [ENV.port]: "",
   HOST: "",
   [ENV.allowCustomCommands]: "1",
@@ -32,8 +33,8 @@ export const testEnvironment = {
   ANTHROPIC_API_KEY: "",
   OPENROUTER_API_KEY: "",
   DEEPSEEK_API_KEY: "",
-  PAPER_PAL_API_KEY: "",
-  PAPER_PAL_API_BASE_URL: "",
+  MARGIN_API_KEY: "",
+  MARGIN_API_BASE_URL: "",
   CODEX_BIN: "",
   CLAUDE_BIN: "",
 };
@@ -177,7 +178,7 @@ export async function api(server, endpoint, { method = "GET", body, headers = {}
   const response = await fetch(`${server.baseUrl}${endpoint}`, {
     method,
     headers: {
-      ...(mutating ? { "Content-Type": "application/json", "X-Paper-Pal": "1" } : {}),
+      ...(mutating ? { "Content-Type": "application/json", "X-Margin": "1" } : {}),
       ...headers,
     },
     body: mutating ? JSON.stringify(body ?? {}) : undefined,
@@ -349,7 +350,7 @@ export async function startMockApi(respond = null) {
 export function runAdapter(args, { input = "prompt", env = {} } = {}) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [path.join(appRoot, "api-adapter.mjs"), ...args], {
-      env: { PATH: process.env.PATH, PAPER_PAL_ADAPTER_BACKOFF_MS: "30", ...env },
+      env: { PATH: process.env.PATH, MARGIN_ADAPTER_BACKOFF_MS: "30", ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";

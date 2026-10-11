@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, promises as fs, realpathSync, watch } from "node:fs";
 import { createServer } from "node:http";
@@ -7,6 +7,9 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { buildRelatedCommentContext } from "./agent-context.mjs";
+import { parseMarkdown } from "./markdown.mjs";
+import { createReviewStore, safeReviewPath } from "./review-store.mjs";
+import { exportReviewPackage, importReviewPackage, PACKAGE_LIMIT } from "./review-package.mjs";
 import {
   AGENT_PROVIDERS,
   buildAgentInvocation,
@@ -44,13 +47,14 @@ rememberConfig(config);
 // Only the app-specific variable is honoured. Many shells and CI images export
 // a generic HOST=<machine name>, which would silently expose this
 // unauthenticated server on the network.
-// PAPER_PAL_HOST, or DRAFT_REVIEW_HOST from before the rename.
+// Only MARGIN_HOST selects a different bind address.
 const host = hostFromEnvironment(process.env);
+const desktopToken = process.env.MARGIN_DESKTOP_TOKEN || "";
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 const hostIsLoopback = loopbackHosts.has(host);
 const publicRoot = path.join(appRoot, "public");
 const sourceRoot = path.resolve(repoRoot, config.sourceRoot);
-// .paper-pal/, unless the project still has only a pre-rename .draft-review/.
+// New projects use .margin/; existing workspace data remains in place.
 const reviewRoot = resolveStateDir(repoRoot);
 const statePath = path.join(reviewRoot, "state.json");
 const undoPath = path.join(reviewRoot, "undo.json");
@@ -65,6 +69,7 @@ const requestIdPattern = /^rw_[A-Za-z0-9_]{1,120}$/;
 const chatIdPattern = /^chat_[A-Za-z0-9_-]+$/;
 const sseClients = new Set();
 const recentWrites = new Map();
+let reviewStore = null;
 
 await Promise.all([
   fs.mkdir(requestsRoot, { recursive: true }),
@@ -266,7 +271,7 @@ function sourceEncoding(bytes) {
 function notUtf8Message(relativePath) {
   const name = path.basename(relativePath);
   const converted = name.replace(/(\.[^.]*)?$/, ".utf8$1");
-  return `This file is not UTF-8, so Paper Pal will not modify it. Convert it to UTF-8 to edit: iconv -f latin1 -t utf-8 ${name} > ${converted}`;
+  return `This file is not UTF-8, so Margin will not modify it. Convert it to UTF-8 to edit: iconv -f latin1 -t utf-8 ${name} > ${converted}`;
 }
 
 async function readSourceEncoding(relativePath) {
@@ -290,6 +295,15 @@ async function assertSourcesWritable(relativePaths) {
 }
 
 async function writeSource(relativePath, text) {
+  if (typeof text !== "string" || !text.isWellFormed()) throw new HttpError(422, "The new text contains half of a character pair, so it was not saved. Reload the document and try again.");
+  if (reviewStore && /\.(md|tex)$/i.test(relativePath)) {
+    await reviewStore.replace(relativePath, text);
+    return;
+  }
+  return writeSourceDirect(relativePath, text);
+}
+
+async function writeSourceDirect(relativePath, text) {
   const absolutePath = resolveDocument(relativePath);
   await assertSourcesWritable([relativePath]);
   // A lone surrogate (a selection that split an emoji) would be written as U+FFFD.
@@ -927,7 +941,7 @@ function assertNoNestedHeadingCommands(source) {
     if (!["heading", "paragraph-heading"].includes(block.kind)) continue;
     const title = headingArgument(block.raw);
     if (HEADING_OPEN_PATTERN.test(title || "")) {
-      throw new Error("A heading command was pasted inside another heading. Edit only the visible heading text; Paper Pal preserves the LaTeX command.");
+      throw new Error("A heading command was pasted inside another heading. Edit only the visible heading text; Margin preserves the LaTeX command.");
     }
   }
 }
@@ -2999,6 +3013,15 @@ async function paperStructure() {
 }
 
 async function compiledOutline() {
+  if (/\.md$/i.test(config.defaultDocument)) {
+    const items = [];
+    for (const document of await listDocuments()) {
+      if (!/\.md$/i.test(document.path)) continue;
+      const payload = await documentPayload(document.path);
+      for (const block of payload.blocks.filter((item) => item.kind === "heading")) items.push({ path: document.path, fileLabel: document.label, blockIndex: block.index, blockId: block.id, title: block.display.trim(), level: block.level, number: "", reviewedPercent: 0 });
+    }
+    return { root: config.defaultDocument, overallProgress: 0, items };
+  }
   const compileRoot = path.resolve(repoRoot, config.latex.cwd);
   const mainArgument = [...config.latex.args].reverse().find((value) => String(value).endsWith(".tex")) || "main.tex";
   const mainPath = path.resolve(compileRoot, mainArgument);
@@ -3198,15 +3221,22 @@ async function compiledOutline() {
   };
 }
 
-async function documentPayload(relativePath) {
+async function documentPayload(relativePath, sourceOverride = null) {
   const absolutePath = resolveDocument(relativePath);
-  const bytes = await fs.readFile(absolutePath);
+  const bytes = sourceOverride === null ? await fs.readFile(absolutePath) : Buffer.from(sourceOverride);
   // Same text as readFile(..., "utf8"): a lossy decoding when the file is not UTF-8.
   const source = bytes.toString("utf8");
   const checked = sourceEncoding(bytes);
   const encoding = checked.valid
     ? { valid: true }
     : { valid: false, reason: checked.reason, message: notUtf8Message(relativePath) };
+  if (/\.md$/i.test(relativePath)) {
+    return {
+      path: relativePath, format: "markdown", etag: sha(source), source, encoding, readOnly: !encoding.valid,
+      blocks: parseMarkdown(source).map((block) => ({ ...block, editable: encoding.valid, status: "draft", acceptedRanges: [], humanRanges: [] })),
+      mathMacros: {}, frontMatter: null, references: { labels: [], citations: [], usedCitationKeys: [], usedLabelKeys: [], unresolved: [] },
+    };
+  }
   const stat = await fs.stat(absolutePath);
   const state = await readState();
   const selections = state.selections.filter((item) => item.path === relativePath && ["accepted", "human"].includes(item.status));
@@ -3250,7 +3280,7 @@ async function documentPayload(relativePath) {
       ...(environmentNumber && environmentNumber !== "?" ? { environmentNumber } : {}),
       ...(block.environmentTitle ? { environmentTitle: stripTex(block.environmentTitle, macros, references) } : {}),
       semantic,
-      // False for every block of a file that Paper Pal will not write.
+      // False for every block of a file that Margin will not write.
       editable: encoding.valid,
       status: paragraphStates[block.id]?.status || (approvedByDefault ? "accepted" : "draft"),
       acceptedRanges: selections
@@ -3399,12 +3429,12 @@ function text(response, status, value, type = "text/plain; charset=utf-8") {
   response.end(value);
 }
 
-async function readJson(request) {
+async function readJson(request, limit = 2_000_000) {
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > 2_000_000) throw new HttpError(413, "Request body is too large.");
+    if (size > limit) throw new HttpError(413, "Request body is too large.");
     chunks.push(chunk);
   }
   const body = Buffer.concat(chunks).toString("utf8");
@@ -3453,7 +3483,7 @@ function assertAllowedHost(request) {
 
 // State-changing requests must come from this app's own page: a matching
 // Origin, or, when the client sends no Origin at all (curl, scripts, tests),
-// the custom X-Paper-Pal header, which a cross-site form or image cannot set.
+// the custom X-Margin header, which a cross-site form or image cannot set.
 function assertLocalOrigin(request) {
   const origin = request.headers.origin;
   if (origin) {
@@ -3461,8 +3491,8 @@ function assertLocalOrigin(request) {
     if (!allowed.has(String(origin).toLowerCase())) throw new HttpError(403, "Request origin is not allowed.");
     return;
   }
-  if (String(request.headers["x-paper-pal"] || "") !== "1") {
-    throw new HttpError(403, "State-changing requests must carry the X-Paper-Pal: 1 header.");
+  if (String(request.headers["x-margin"] || "") !== "1") {
+    throw new HttpError(403, "State-changing requests must carry the X-Margin: 1 header.");
   }
 }
 
@@ -3480,6 +3510,7 @@ function publicErrorMessage(message) {
 
 function errorResponse(error) {
   if (error instanceof HttpError) return { status: error.status, message: publicErrorMessage(error.message) };
+  if (Number.isInteger(error?.status) && error.status >= 400 && error.status < 500) return { status: error.status, message: publicErrorMessage(error.message) };
   if (error?.code === "ENOENT" || error?.code === "ENOTDIR" || error?.code === "EISDIR") {
     return { status: 404, message: "The requested file was not found." };
   }
@@ -3527,7 +3558,7 @@ function signalChild(child, signal) {
       // Fall through to the plain kill below.
     }
   }
-  if (useProcessGroups && child.paperPalGroup && child.pid) {
+  if (useProcessGroups && child.marginGroup && child.pid) {
     try {
       process.kill(-child.pid, signal);
       return true;
@@ -3548,7 +3579,7 @@ function signalChild(child, signal) {
 // because a grandchild may have outlived it.
 function terminateChild(child, graceMs = 5000) {
   if (!child) return;
-  const grouped = useProcessGroups && child.paperPalGroup;
+  const grouped = useProcessGroups && child.marginGroup;
   if (!grouped && (child.exitCode !== null || child.signalCode)) return;
   signalChild(child, "SIGTERM");
   const timer = setTimeout(() => signalChild(child, "SIGKILL"), graceMs);
@@ -3576,7 +3607,7 @@ function spawnCaptured(command, args, { cwd, env = childEnvironment(), input = n
       const plan = spawnPlan(command, args);
       const grouped = group && useProcessGroups;
       child = spawn(plan.command, plan.args, { cwd, env, shell: false, detached: grouped, ...plan.options });
-      child.paperPalGroup = grouped;
+      child.marginGroup = grouped;
       onChild?.(child);
       // A child that exits early closes the pipe; that must not crash us.
       child.stdin?.on("error", () => {});
@@ -3632,7 +3663,7 @@ function agentFailureMessage(result, fallback, { timeoutSetting = "agent.timeout
   const all = lines.join("\n");
   // The API adapter already ends its messages with what to check.
   const hint = /\.env\b/.test(all) ? "" : /unexpected argument|unrecognized (?:option|argument)|unknown (?:option|argument)/i.test(all)
-    ? "The installed CLI does not accept an option Paper Pal passes: update the CLI to its current version, then Retry."
+    ? "The installed CLI does not accept an option Margin passes: update the CLI to its current version, then Retry."
     : /unauthori[sz]ed|\b401\b|not logged in|log ?in (?:required|again)|please (?:run )?.{0,20}log ?in|invalid api key|authentication/i.test(all)
     ? "The backend is not signed in: sign in to its CLI in a terminal (or check the key in .env), then Retry."
     : /waiting for network|failed to connect|connection failed|stream disconnected|ENOTFOUND|ECONNREFUSED|ECONNRESET|EAI_AGAIN|fetch failed/i.test(all)
@@ -7384,7 +7415,7 @@ async function acceptRewriteProposal(body) {
   await writeSource(request.path, nextSource);
   request.status = "resolved";
   request.acceptedAt = new Date().toISOString();
-  request.resolutionSummary = request.proposal.summary || "Accepted Paper Pal proposal";
+  request.resolutionSummary = request.proposal.summary || "Accepted Margin proposal";
   request.resolutionEtag = sha(nextSource);
   await atomicWrite(target, `${JSON.stringify(request, null, 2)}\n`);
 
@@ -7725,7 +7756,7 @@ async function serveAssetPreview(relativePath, response) {
 async function serveKatex(requestPath, response) {
   const requested = requestPath.replace(/^\/vendor\/katex\//, "");
   // Resolve like Node does: in a packaged install npm hoists katex next to
-  // Paper Pal instead of into its own node_modules.
+  // Margin instead of into its own node_modules.
   let root = path.join(appRoot, "node_modules/katex/dist");
   try {
     root = path.join(path.dirname(createRequire(import.meta.url).resolve("katex/package.json")), "dist");
@@ -7755,9 +7786,97 @@ async function serveKatex(requestPath, response) {
   response.end(contents);
 }
 
+// The review workspace never starts a model. Legacy proposal files remain on
+// disk for existing projects, but their execution and mutation routes are gone.
+const retiredReviewRoutes = /^\/api\/(?:rewrite(?:\/|$)|requests?(?:\/|$)|chats?(?:\/|$)|document\/review(?:\/|$)|structure\/section-rewrite(?:\/|$))/;
+const resourcePattern = /\.(bib|sty|cls|png|jpe?g|gif|webp|svg|pdf)$/i;
+
+reviewStore = createReviewStore({
+  root: reviewRoot,
+  atomicWrite,
+  // UI visibility is not an export filter: hidden entry/include files are still
+  // needed to restore a complete manuscript project.
+  listDocuments: async () => (await walkSourceFiles((name) => /\.(md|tex)$/i.test(name))).map((absolute) => ({ path: relativeRepo(absolute) })),
+  readSource: async (relativePath, { missing = false } = {}) => {
+    const absolute = resolveDocument(relativePath);
+    try {
+      const bytes = await fs.readFile(absolute);
+      if (!sourceEncoding(bytes).valid) throw new HttpError(409, notUtf8Message(relativePath));
+      return bytes.toString("utf8");
+    } catch (error) {
+      if (missing && error.code === "ENOENT") return null;
+      throw error;
+    }
+  },
+  writeSource: async (relativePath, source) => {
+    const absolute = resolveDocument(relativePath);
+    await fs.mkdir(path.dirname(absolute), { recursive: true });
+    await writeSourceDirect(relativePath, source);
+  },
+  readResource: async (relativePath) => {
+    const absolute = path.resolve(repoRoot, safeReviewPath(relativePath));
+    if (!insideSourceRoot(absolute)) throw new HttpError(403, "The imported resource is outside the source root.");
+    try { return (await fs.readFile(absolute)).toString("base64"); }
+    catch (error) { if (error.code === "ENOENT") return null; throw error; }
+  },
+  writeResource: async (relativePath, data) => {
+    const absolute = path.resolve(repoRoot, safeReviewPath(relativePath));
+    if (!insideSourceRoot(absolute) || !resourcePattern.test(relativePath)) throw new HttpError(403, "The imported resource is outside the source root or unsupported.");
+    await fs.mkdir(path.dirname(absolute), { recursive: true });
+    await atomicWrite(absolute, Buffer.from(data, "base64"));
+  },
+});
+if (!realPathInside(realRepoRoot, reviewRoot)) throw new Error("The review state must stay inside the project.");
+await reviewStore.recover();
+
+async function importReview(body) {
+  let imported;
+  let resources = new Map();
+  let documents;
+  if (typeof body.package === "string") {
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(body.package)) throw new HttpError(400, "Choose a valid review ZIP package.");
+    const parsed = importReviewPackage(Buffer.from(body.package, "base64"));
+    imported = parsed.state;
+    resources = parsed.assets;
+  } else {
+    if (!Array.isArray(body.files) || !body.files.length || body.files.length > 1000) throw new HttpError(400, "Choose Markdown or LaTeX files to import.");
+    documents = [];
+    const seen = new Set();
+    let total = 0;
+    for (const file of body.files) {
+      if (!file || typeof file !== "object") throw new HttpError(400, "Choose valid manuscript files to import.");
+      safeReviewPath(file.path);
+      if (seen.has(file.path.toLowerCase())) throw new HttpError(400, "Import paths must be unique.");
+      seen.add(file.path.toLowerCase());
+      if (typeof file.content !== "string" || !/^[A-Za-z0-9+/]*={0,2}$/.test(file.content)) throw new HttpError(400, "A file is not valid base64.");
+      const bytes = Buffer.from(file.content, "base64");
+      total += bytes.length;
+      if (total > PACKAGE_LIMIT) throw new HttpError(413, "The imported files exceed 32 MiB.");
+      if (/\.(md|tex)$/i.test(file.path)) {
+        if (!sourceEncoding(bytes).valid) throw new HttpError(409, notUtf8Message(file.path));
+        documents.push({ path: file.path, source: bytes.toString("utf8") });
+      } else if (resourcePattern.test(file.path)) resources.set(file.path, bytes);
+      else throw new HttpError(400, "Import only manuscript files and their bibliography, styles or images.");
+    }
+    if (!documents.length) throw new HttpError(400, "Include at least one Markdown or LaTeX document.");
+  }
+  const prefix = `${config.sourceRoot === "." ? "" : `${config.sourceRoot}/`}imports/review-${Date.now()}-${randomBytes(4).toString("hex")}`;
+  // All archive validation happens before writing. Use a fresh directory;
+  // imports never replace existing documents or execute project configuration.
+  const absolutePrefix = path.resolve(repoRoot, prefix);
+  if (!insideSourceRoot(absolutePrefix)) throw new HttpError(403, "The import folder must stay inside the source root.");
+  const result = imported ? await reviewStore.importState(imported, prefix, resources) : await reviewStore.importDocuments(documents, prefix, resources);
+  emit("document", { reason: "imported" });
+  return result;
+}
+
 const server = createServer(async (request, response) => {
   try {
     assertAllowedHost(request);
+    if (desktopToken) {
+      const supplied = String(request.headers["x-margin-desktop-token"] || "");
+      if (!timingSafeEqual(createHash("sha256").update(supplied).digest(), createHash("sha256").update(desktopToken).digest())) throw new HttpError(403, "This desktop workspace requires its private session token.");
+    }
     let url;
     try {
       // The Host header was validated above; the base only anchors the parse.
@@ -7774,61 +7893,52 @@ const server = createServer(async (request, response) => {
       }
     }
 
-    if (request.method === "GET" && url.pathname === "/api/bootstrap") {
-      json(response, 200, {
-        title: config.title,
-        projectLabel: config.projectLabel,
-        // Names only: absolute paths carry the OS user name and are not needed
-        // by the page.
-        configPath: path.basename(configPath),
-        repoRoot: path.basename(repoRoot),
-        defaultDocument: config.defaultDocument,
-        initialDocument: config.ui?.initialDocument || config.defaultDocument,
-        documents: await listDocuments(),
-        pdfExists: existsSync(path.resolve(repoRoot, config.pdf)),
-        latex: { enabled: config.latex?.enabled !== false, available: latexAvailable() },
-        compile: compileState,
-        undo: await undoStatus(),
-        git: await gitStatus(),
-        chat: {
-          enabled: config.agent?.enabled !== false,
-          model: providerModel(defaultProvider, config, { chat: true }) || `${providerLabel(defaultProvider)} default`,
-          reasoningEffort: config.codex?.chatReasoningEffort || "medium",
-          concurrency: maxConcurrentChatTurns,
-        },
-        agent: {
-          enabled: config.agent?.enabled !== false,
-          provider: defaultProvider,
-          allowOverride: config.agent?.allowOverride !== false,
-          // id/label/model/models are the original contract; kind, available,
-          // reason and capabilities were added with the API providers.
-          providers: providerSummaries().map((entry) => ({
-            id: entry.id,
-            label: entry.label,
-            model: providerModel(entry.id, config, { chat: true }) || `${entry.label} default`,
-            models: providerModelChoices(entry.id),
-            kind: entry.kind,
-            available: entry.available,
-            reason: entry.reason,
-            capabilities: entry.capabilities,
-          })),
-        },
-        structurePlan: await readStructurePlan({ publicOnly: true }),
+    if (retiredReviewRoutes.test(url.pathname)) throw new HttpError(410, "AI tasks are not available in the review workspace.");
+    if (request.method === "GET" && url.pathname === "/api/review") {
+      json(response, 200, await withProjectLock(() => reviewStore.open(url.searchParams.get("path"))));
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/api/review/render") {
+      const documentPath = url.searchParams.get("path");
+      const review = await withProjectLock(() => reviewStore.open(documentPath));
+      const revision = review.document.revisions.find((item) => item.id === url.searchParams.get("revision"));
+      if (!revision) throw new HttpError(404, "This document revision does not exist.");
+      json(response, 200, await documentPayload(documentPath, revision.source));
+      return;
+    }
+    if (request.method === "POST" && url.pathname.startsWith("/api/review/")) {
+      const action = url.pathname.slice("/api/review/".length);
+      const methods = { save: reviewStore.save, comment: reviewStore.comment, "comment-update": reviewStore.updateComment, restore: reviewStore.restore, checkpoint: reviewStore.checkpoint, import: importReview };
+      if (!Object.hasOwn(methods, action)) throw new HttpError(404, "Unknown review action.");
+      const body = await readJson(request, action === "import" ? Math.ceil(PACKAGE_LIMIT * 1.4) : 2_000_000);
+      const value = await withProjectLock(() => methods[action](body));
+      emit("review", { path: body.path || null, action });
+      json(response, 200, value);
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/api/review/export") {
+      const archive = await withProjectLock(async () => {
+        const state = await reviewStore.snapshot();
+        const assets = new Map();
+        let size = 0;
+        for (const absolute of await walkSourceFiles((name) => resourcePattern.test(name))) {
+          const bytes = await fs.readFile(absolute);
+          size += bytes.length;
+          if (size > PACKAGE_LIMIT) throw new HttpError(413, "Project resources exceed 32 MiB; export a smaller project.");
+          assets.set(relativeRepo(absolute), bytes);
+        }
+        return exportReviewPackage(state, assets);
       });
+      response.writeHead(200, { "Content-Type": "application/zip", "Content-Disposition": 'attachment; filename="margin-review.zip"', "Content-Length": archive.length, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store" });
+      response.end(archive);
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/api/bootstrap") {
+      json(response, 200, { title: config.title, configPath: path.basename(configPath), projectLabel: "Local review workspace", defaultDocument: config.defaultDocument, initialDocument: config.ui?.initialDocument || config.defaultDocument, documents: await listDocuments(), formats: ["markdown", "latex"], reviewPackageVersion: 1, agent: { enabled: false, providers: [] }, latex: { enabled: config.latex.enabled, available: latexAvailable() }, compile: compileState });
       return;
     }
     if (request.method === "GET" && url.pathname === "/api/health") {
-      // For scripts, agents and the page: is the app up and what can it do?
-      // No absolute paths and nothing secret.
-      json(response, 200, {
-        ok: true,
-        name: APP_ID,
-        version: appVersion(),
-        project: { title: config.title, defaultDocument: config.defaultDocument },
-        latex: { enabled: config.latex?.enabled !== false, available: latexAvailable() },
-        providers: providerSummaries().map(({ id, label, kind, available, reason }) => ({ id, label, kind, available, reason })),
-        defaultProvider,
-      });
+      json(response, 200, { ok: true, name: APP_ID, version: appVersion(), project: { title: config.title, defaultDocument: config.defaultDocument }, formats: ["markdown", "latex"], reviewPackageVersion: 1, agent: { enabled: false }, latex: { enabled: config.latex.enabled, available: latexAvailable() } });
       return;
     }
     if (request.method === "GET" && url.pathname === "/api/document") {
@@ -8138,7 +8248,7 @@ try {
 
 server.on("error", (error) => {
   if (error?.code === "EADDRINUSE") {
-    console.error(`Port ${port} is already in use. Stop the existing Paper Pal instance or start with --port <number>.`);
+    console.error(`Port ${port} is already in use. Stop the existing Margin instance or start with --port <number>.`);
     process.exit(1);
   }
   console.error(`The server could not start: ${error?.message || error}`);
@@ -8158,13 +8268,12 @@ process.on("uncaughtException", (error) => {
 server.listen(port, host, () => {
   const shownHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
   const address = `http://${shownHost}:${server.address()?.port ?? port}`;
-  const providerState = describeProvider(defaultProvider, config);
   console.log([
     `${APP_NAME} ${appVersion()} is running at ${address}`,
     `  Project:  ${config.title} (${config.defaultDocument})`,
     `  Folder:   ${repoRoot}`,
-    `  Agent:    ${providerState.label} - ${providerState.available ? "ready" : `not ready. ${providerState.reason}`}`,
-    ...(providerState.warning ? [`  WARNING:  ${providerState.warning}`] : []),
+    "  Review:   Markdown + LaTeX, comments, revisions and portable review packages",
+    "  AI:       disabled (manual review workspace)",
     `  PDF:      ${config.latex?.enabled === false ? "compilation disabled" : latexAvailable() ? `${config.latex.command} found` : `${config.latex.command} not found on PATH`}`,
     "  Press Ctrl+C to stop.",
   ].join("\n"));

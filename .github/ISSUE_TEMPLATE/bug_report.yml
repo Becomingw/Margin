@@ -5,9 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        **Do not include unpublished manuscript text, API keys, `.env` contents or files from `.paper-pal/`.**
-        Issues are public and permanent. Reduce a parser problem to a few lines of made-up LaTeX.
-        Security problems go to the [private report form](https://github.com/claire1217/paper-pal/security/advisories/new), not here.
+        **Do not include unpublished manuscript text, API keys, `.env` contents or files from `.margin/`.**
+        Issues are public and permanent. Reduce a parser problem to a few lines of made-up Markdown or LaTeX.
+        Share security reports through the [private form](https://github.com/Becomingw/Margin/security/advisories/new); see SECURITY.md.
   - type: textarea
     id: what-happened
     attributes:
@@ -19,7 +19,7 @@ body:
     id: steps
     attributes:
       label: Steps to reproduce
-      description: The shortest sequence that shows the problem. For parser bugs, a minimal made-up `.tex` snippet.
+      description: The shortest sequence that shows the problem. For parser bugs, a minimal made-up `.md` or `.tex` snippet.
       placeholder: |
         1. npm run demo
         2. Select the first sentence of the abstract and comment "shorter"
@@ -35,19 +35,13 @@ body:
     validations:
       required: true
   - type: dropdown
-    id: backend
+    id: interface
     attributes:
-      label: AI backend in use
+      label: Interface in use
       options:
-        - codex (CLI)
-        - claude (CLI)
-        - openai
-        - anthropic
-        - openrouter
-        - deepseek
-        - ollama
-        - custom (OpenAI-compatible endpoint)
-        - none / not relevant
+        - Desktop application
+        - Local browser workspace
+        - CLI / HTTP API
     validations:
       required: true
   - type: input
@@ -61,13 +55,13 @@ body:
     id: node
     attributes:
       label: Node.js version
-      description: Output of `node -v`.
+      description: Output of `node -v`; enter "bundled" for the installed desktop app.
     validations:
       required: true
   - type: input
     id: version
     attributes:
-      label: Paper Pal version or commit
+      label: Margin version or commit
       description: Output of `git rev-parse --short HEAD` in the app folder, or the version from the start banner.
     validations:
       required: false
@@ -84,5 +78,5 @@ body:
     attributes:
       label: Privacy check
       options:
-        - label: This report contains no unpublished manuscript text, no API keys and nothing from `.paper-pal/` or `.env`.
+        - label: This report contains no unpublished manuscript text, no API keys and nothing from `.margin/` or `.env`.
           required: true

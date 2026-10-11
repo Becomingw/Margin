@@ -33,7 +33,7 @@ describe("HTTP hardening", () => {
         ].join("\n"),
       },
     });
-    outsideDirectory = await makeTempDir("paper-pal-outside-");
+    outsideDirectory = await makeTempDir("margin-outside-");
     await fs.writeFile(path.join(outsideDirectory, "secret.tex"), "TOP SECRET OUTSIDE CONTENT\n", "utf8");
     await fs.writeFile(path.join(outsideDirectory, "secret.png"), "not really a png", "utf8");
     linksCreated = (await Promise.all([
@@ -67,22 +67,22 @@ describe("HTTP hardening", () => {
     }
   });
 
-  it("requires a matching Origin or the X-Paper-Pal header on state-changing requests", async () => {
+  it("requires a matching Origin or the X-Margin header on state-changing requests", async () => {
     const host = `127.0.0.1:${server.port}`;
-    const body = JSON.stringify({});
+    const body = JSON.stringify({ files: [{ path: "note.md", content: Buffer.from("# Note\n").toString("base64") }] });
     const json = { "Content-Type": "application/json", Host: host };
-    const bare = await rawRequest(server, { method: "POST", path: "/api/chat/new", headers: json, body });
+    const bare = await rawRequest(server, { method: "POST", path: "/api/review/import", headers: json, body });
     assert.equal(bare.status, 403, "no Origin and no custom header");
-    const foreign = await rawRequest(server, { method: "POST", path: "/api/chat/new", headers: { ...json, Origin: "http://evil.example", "X-Paper-Pal": "1" }, body });
+    const foreign = await rawRequest(server, { method: "POST", path: "/api/review/import", headers: { ...json, Origin: "http://evil.example", "X-Margin": "1" }, body });
     assert.equal(foreign.status, 403, "foreign Origin wins over the header");
-    const sameOrigin = await rawRequest(server, { method: "POST", path: "/api/chat/new", headers: { ...json, Origin: `http://${host}` }, body });
-    assert.equal(sameOrigin.status, 201);
-    const withHeader = await rawRequest(server, { method: "POST", path: "/api/chat/new", headers: { ...json, "X-Paper-Pal": "1" }, body });
-    assert.equal(withHeader.status, 201);
+    const sameOrigin = await rawRequest(server, { method: "POST", path: "/api/review/import", headers: { ...json, Origin: `http://${host}` }, body });
+    assert.equal(sameOrigin.status, 200);
+    const withHeader = await rawRequest(server, { method: "POST", path: "/api/review/import", headers: { ...json, "X-Margin": "1" }, body });
+    assert.equal(withHeader.status, 200);
     const formPost = await rawRequest(server, {
       method: "POST",
-      path: "/api/chat/new",
-      headers: { Host: host, "X-Paper-Pal": "1", "Content-Type": "text/plain" },
+      path: "/api/review/import",
+      headers: { Host: host, "X-Margin": "1", "Content-Type": "text/plain" },
       body,
     });
     assert.equal(formPost.status, 415, "a body must be application/json");
@@ -117,7 +117,7 @@ describe("HTTP hardening", () => {
     const badJson = await rawRequest(server, {
       method: "POST",
       path: "/api/save",
-      headers: { Host: `127.0.0.1:${server.port}`, "X-Paper-Pal": "1", "Content-Type": "application/json" },
+      headers: { Host: `127.0.0.1:${server.port}`, "X-Margin": "1", "Content-Type": "application/json" },
       body: "{not json",
     });
     assert.equal(badJson.status, 400);
@@ -135,7 +135,7 @@ describe("HTTP hardening", () => {
     assert.match(csp, /script-src 'self'/);
     assert.doesNotMatch(csp.match(/script-src[^;]*/)[0], /unsafe-inline|unsafe-eval/);
     assert.match(csp, /frame-ancestors 'none'/);
-    for (const target of ["/api/bootstrap", "/app.js", "/styles.css", "/vendor/katex/katex.min.js", "/api/nope"]) {
+    for (const target of ["/api/bootstrap", "/app.js", "/theme.css", "/review.css", "/vendor/katex/katex.min.js", "/api/nope"]) {
       const response = await rawRequest(server, { path: target, headers: host });
       assert.equal(response.headers["x-content-type-options"], "nosniff", target);
     }

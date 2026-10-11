@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Try Paper Pal without touching anything: copies the bundled sample paper to
+// Try Margin without touching anything: copies the bundled sample paper to
 // a temporary folder, configures it there and starts the server. Works with no
 // agent installed and no API key (the page loads; agent actions say what is
 // missing). The copy is removed when the server stops: Ctrl+C, SIGTERM, SIGHUP,

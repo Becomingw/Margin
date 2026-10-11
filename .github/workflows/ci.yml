@@ -51,7 +51,7 @@ jobs:
           set -o pipefail
           npm test 2>&1 | tee test.log
         env:
-          PAPER_PAL_ENV_FILE: none
+          MARGIN_ENV_FILE: none
 
       # Surface the failing tests as annotations, so a failure can be read
       # from the run summary without opening the raw log.

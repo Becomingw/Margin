@@ -15,7 +15,7 @@ function collect(directory, recursive) {
     const absolute = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       if (recursive && entry.name !== "node_modules") found.push(...collect(absolute, true));
-    } else if (/[.]mjs$/.test(entry.name)) found.push(absolute);
+    } else if (/[.](?:mjs|cjs|js)$/.test(entry.name)) found.push(absolute);
   }
   return found;
 }
@@ -25,6 +25,7 @@ const files = [
   ...collect(path.join(appRoot, "bin"), true),
   ...collect(path.join(appRoot, "scripts"), true),
   ...collect(path.join(appRoot, "tests"), true),
+  ...collect(path.join(appRoot, "desktop"), true),
   ...[path.join(appRoot, "public", "app.js")].filter((file) => existsSync(file)),
 ].sort();
 

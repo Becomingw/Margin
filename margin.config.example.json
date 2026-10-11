@@ -1,0 +1,16 @@
+{
+  "title": "My review workspace",
+  "projectLabel": "Local review workspace",
+  "sourceRoot": ".",
+  "defaultDocument": "main.tex",
+  "pdf": "main.pdf",
+  "latex": {
+    "enabled": false,
+    "cwd": ".",
+    "command": "latexmk",
+    "args": ["-pdf", "-interaction=nonstopmode", "-halt-on-error", "main.tex"]
+  },
+  "agent": { "enabled": false },
+  "ui": { "initialDocument": "main.tex", "hiddenDocuments": [] },
+  "approvedDocuments": []
+}

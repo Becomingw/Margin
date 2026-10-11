@@ -2,7 +2,7 @@
 
 ## Our pledge
 
-We want Paper Pal to be a project where people can ask questions, report
+We want Margin to be a project where people can ask questions, report
 problems and contribute without being harassed or belittled, whatever their
 background, identity, experience or native language.
 
@@ -28,8 +28,7 @@ Its definitions and enforcement guidelines apply here.
 
 ## Reporting
 
-Report a problem privately to the maintainer, @claire1217, through GitHub's
-[private report form](https://github.com/claire1217/paper-pal/security/advisories/new)
-(state that it is a conduct report), or use GitHub's "Report content" link on
-the comment in question. Reports are handled confidentially. The maintainer
+Report a problem privately to the distributor of your copy, or use the hosting
+platform's "Report content" link on the comment in question. Reports should be
+handled confidentially. The maintainer
 may remove content, lock threads or block accounts that break these rules.

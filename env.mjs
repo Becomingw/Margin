@@ -1,4 +1,4 @@
-// A small .env reader. Paper Pal loads exactly one file, <appRoot>/.env, at the
+// A small .env reader. Margin loads exactly one file, <appRoot>/.env, at the
 // start of the server, doctor and setup. The project directory is never
 // searched: a manuscript repository is often shared, and keys do not belong
 // in it.
@@ -42,8 +42,8 @@ export function parseEnv(text) {
  * A missing file is not an error.
  */
 export function loadEnvFile(appRoot, env = process.env) {
-  // PAPER_PAL_ENV_FILE (shell only): another file, or "none" to load nothing.
-  const override = String(env.PAPER_PAL_ENV_FILE || "").trim();
+  // MARGIN_ENV_FILE (shell only): another file, or "none" to load nothing.
+  const override = String(env.MARGIN_ENV_FILE || "").trim();
   const target = override && override.toLowerCase() !== "none" ? path.resolve(override) : path.join(appRoot, ".env");
   const report = { path: target, exists: false, loaded: [], skipped: [] };
   if (override.toLowerCase() === "none" || !existsSync(target)) return report;

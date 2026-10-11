@@ -1,20 +1,17 @@
 cff-version: 1.2.0
-message: "If you use Paper Pal in work that leads to a publication, please cite it as below."
+message: "If you cite Margin, identify the version or commit used."
 type: software
-title: "Paper Pal"
-abstract: "A local-first, review-first AI writing workspace for LaTeX manuscripts. The author comments on a passage, an AI backend proposes a rewrite, and the source changes only when the author accepts the diff."
+title: "Margin · 页边"
+abstract: "An independent local manual-review workspace for Markdown and LaTeX, with comments, source revisions and portable review history."
 authors:
-  - name: "claire1217"
-    alias: "claire1217"
-    website: "https://github.com/claire1217"
+  - name: "Margin contributors"
 version: "0.1.0"
-date-released: "2026-09-20"
+repository-code: "https://github.com/Becomingw/Margin"
+url: "https://github.com/Becomingw/Margin"
 license: MIT
-repository-code: "https://github.com/claire1217/paper-pal"
-url: "https://github.com/claire1217/paper-pal"
 keywords:
+  - Markdown
   - LaTeX
-  - academic writing
-  - manuscript review
-  - large language models
+  - document review
+  - annotations
   - local-first software

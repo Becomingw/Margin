@@ -1,0 +1,50 @@
+appId: app.margin.workspace
+productName: Margin
+asar: true
+directories:
+  output: dist
+  buildResources: desktop/assets
+files:
+  - "*.mjs"
+  - "package.json"
+  - "desktop/**"
+  - "public/**"
+  - "schemas/**"
+  - "examples/**"
+  - "LICENSE"
+  - "NOTICE.md"
+  - "THIRD_PARTY.md"
+  - "!desktop/assets/**"
+  - "!**/.paper-pal/**"
+  - "!**/.margin/**"
+  - "!**/.draft-review/**"
+  - "!**/.env*"
+  - "!**/paper-pal.local.json"
+  - "!**/margin.local.json"
+  - "!**/review.local.json"
+artifactName: "Margin-${version}-${os}-${arch}.${ext}"
+fileAssociations:
+  - ext: marginreview
+    name: Margin review package
+    role: Editor
+mac:
+  category: public.app-category.productivity
+  icon: desktop/assets/icon.icns
+  target:
+    - dmg
+    - zip
+  hardenedRuntime: true
+  entitlements: desktop/entitlements.mac.plist
+  entitlementsInherit: desktop/entitlements.mac.plist
+win:
+  icon: desktop/assets/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false
