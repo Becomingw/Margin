@@ -29,6 +29,8 @@ Development: `npm ci`, then `npm run desktop`.
 Unpacked build: `npm run desktop:pack`.
 Installers: `npm run desktop:dist -- --mac --arm64`, `--mac --x64`, or `--win --x64`.
 Use each platform's native build runner; the workflow builds both platforms.
+Intel macOS packages use `macos-15-intel`; Apple Silicon uses `macos-latest`.
+The workflow checks the packaged executable as well as development Electron.
 Artifacts appear in `dist/`. The Windows installer is per-user and preserves user
 data on uninstall. `.marginreview` files are ZIP review packages; ordinary exported
 `.zip` packages can also be imported. Markdown/LaTeX default file associations are

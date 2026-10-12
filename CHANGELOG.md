@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Build and smoke-test Intel macOS packages on native Intel runners rather than
+  relying on cross-architecture application startup on Apple Silicon runners.
+
 ## [0.2.0] — 2026-10-12
 
 - Expand Markdown reading with aligned tables, nested lists, task checkboxes,

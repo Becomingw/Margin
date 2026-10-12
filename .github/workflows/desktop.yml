@@ -18,7 +18,7 @@ jobs:
             target: --mac --arm64
             artifact: mac-arm64
             executable: dist/mac-arm64/Margin.app/Contents/MacOS/Margin
-          - os: macos-latest
+          - os: macos-15-intel
             target: --mac --x64
             artifact: mac-x64
             executable: dist/mac/Margin.app/Contents/MacOS/Margin
