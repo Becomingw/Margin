@@ -27,6 +27,8 @@
 在阅读视图中查看正文与公式，再随时进入源码编辑。
 
 - **两种格式，同一种习惯**：Markdown 与 LaTeX 都能阅读、批注、修订和导出。
+- **更完整的 Markdown 阅读**：表格、嵌套列表、任务清单、链接、本地图片、脚注、公式，
+  以及包含折叠详情的常用 HTML，都以相应结构呈现。见 [Markdown 支持说明](docs/markdown.md)。
 - **长文也有方向**：文档切换与章节导航，让你在不同部分之间来回核对。
 - **让界面退后一点**：暖白纸面、克制的工具栏、深色主题与窄屏布局，为正文留出空间。
 
@@ -36,6 +38,15 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/review-latex-dark.png">
   <img src="docs/images/review-latex-light.png" alt="LaTeX 阅读视图、章节大纲与页边批注" width="100%">
+</picture>
+</details>
+
+<details>
+<summary><strong>查看增强 Markdown 渲染</strong></summary>
+<br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/markdown-rich-dark.png">
+  <img src="docs/images/markdown-rich-light.png" alt="Markdown 表格、嵌套格式与准确定位的页边批注" width="100%">
 </picture>
 </details>
 
@@ -95,24 +106,24 @@
 
 ## 下载与开始
 
-| 平台 | v0.1.0 安装包 |
+| 平台 | v0.2.0 安装包 |
 | --- | --- |
-| macOS · Apple Silicon | [下载 DMG](https://github.com/Becomingw/Margin/releases/download/v0.1.0/Margin-0.1.0-mac-arm64.dmg) |
-| macOS · Intel | [下载 DMG](https://github.com/Becomingw/Margin/releases/download/v0.1.0/Margin-0.1.0-mac-x64.dmg) |
-| Windows · x64 | [下载安装程序](https://github.com/Becomingw/Margin/releases/download/v0.1.0/Margin-0.1.0-win-x64.exe) |
+| macOS · Apple Silicon | [下载 DMG](https://github.com/Becomingw/Margin/releases/download/v0.2.0/Margin-0.2.0-mac-arm64.dmg) |
+| macOS · Intel | [下载 DMG](https://github.com/Becomingw/Margin/releases/download/v0.2.0/Margin-0.2.0-mac-x64.dmg) |
+| Windows · x64 | [下载安装程序](https://github.com/Becomingw/Margin/releases/download/v0.2.0/Margin-0.2.0-win-x64.exe) |
 
 1. **安装 Margin**：macOS 拖入「应用程序」；Windows 运行安装程序。无需另外安装 Node。
 2. **打开文档或项目**：选择 `.md`、`.tex` 或文件夹，也可以拖入，或导入收到的审阅包。
 3. **开始第一条批注**：选中文字留下意见，修改后保存，再通过修订视图回看变化。
 
-macOS ZIP、校验和及验证范围见[发布页](https://github.com/Becomingw/Margin/releases/tag/v0.1.0)。
+macOS ZIP、校验和及验证范围见[发布页](https://github.com/Becomingw/Margin/releases/tag/v0.2.0)。
 当前安装包未签名，macOS 未公证，系统可能显示开发者身份提示。
 
 <details>
 <summary><strong>使用前了解这几件事</strong></summary>
 
 - Margin 专注人工审阅，没有内置 AI 执行功能，也不需要模型或 API Key。
-- Markdown 支持常见结构与公式，并非完整 HTML 渲染器；LaTeX 是源码阅读视图，不是排版 PDF 编辑器。
+- 具体语法和边界见 [Markdown 支持说明](docs/markdown.md)。编辑仍基于源码；LaTeX 不是排版 PDF 编辑器。
 - 非 UTF-8 文件只读。审阅包压缩前后均限 32 MiB，并包含历史版本与已删除批注。
 - 审阅包用于完整恢复，不自动合并相同 ID 的分支；单独修改 `REVIEW.md` 不会成为可导入的修改补丁。
 - 本地浏览器版与源码运行见[安装指南](docs/INSTALL-FOR-AGENTS.md)；旧数据见[迁移说明](docs/migration.md)。

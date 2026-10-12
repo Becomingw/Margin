@@ -113,7 +113,7 @@ it("Markdown blocks tile source and preserve source mapping across mixed constru
   const blocks = parseMarkdown(source);
   assert.equal(blocks.map((item) => item.raw).join(""), source);
   assert.ok(blocks.some((item) => item.kind === "code" && item.display.includes("**literal**")));
-  for (const block of blocks) for (let i = 0; i < block.display.length; i += 1) assert.equal(block.raw.slice(block.displayStarts[i], block.displayEnds[i]), block.display[i]);
+  for (const block of blocks) for (let i = 0; i < block.display.length; i += 1) assert.equal(block.raw.slice(block.displayStarts[i], block.displayEnds[i]).replace(/\r\n?/g, "\n"), block.display[i]);
   const project = await makeProject({ files: { "main.md": source } });
   const server = await startServer(project.root);
   const document = await getDocument(server, "main.md");

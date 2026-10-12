@@ -6,7 +6,7 @@ following third-party components. Each stays under its own licence.
 
 ## KaTeX
 
-- Use: renders math in the page. It is the only runtime dependency, installed
+- Use: renders math in the page, installed
   by `npm install` into `node_modules/katex` (version range `^0.18.1` in
   `package.json`) and served from there under `/vendor/katex/`. It is not
   copied into this repository.
@@ -16,6 +16,21 @@ following third-party components. Each stays under its own licence.
   (`node_modules/katex/dist/fonts`). The KaTeX project publishes them under the
   SIL Open Font License 1.1 (https://github.com/KaTeX/katex-fonts).
 - Source: https://github.com/KaTeX/KaTeX
+
+## Markdown and HTML parsing
+
+- **markdown-it**: CommonMark parsing and tables/strikethrough, with local source
+  mapping hooks. MIT; see `node_modules/markdown-it/LICENSE`.
+  Source: https://github.com/markdown-it/markdown-it
+- **markdown-it-footnote**: reference footnotes. MIT; see
+  `node_modules/markdown-it-footnote/LICENSE`.
+  Source: https://github.com/markdown-it/markdown-it-footnote
+- **parse5**: HTML fragment parsing and source locations before allow-list
+  sanitization. MIT; see `node_modules/parse5/LICENSE`.
+  Source: https://github.com/inikulin/parse5
+
+These run in the local Node backend, without browser CDNs or a build step.
+Their transitive dependencies retain their own notices in `node_modules`.
 
 ## Fonts vendored in `public/fonts/`
 

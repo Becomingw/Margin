@@ -251,6 +251,14 @@ async function exportFile(kind, relative) {
   return { saved: true, name: path.basename(destination) };
 }
 async function dispatch(action, value) {
+  if (action === "open-link") {
+    if (typeof value !== "string" || value.length > 8192 || /[\u0000-\u0020\u007f]/.test(value)) throw new Error("此链接无法打开。");
+    let url;
+    try { url = new URL(value); } catch { throw new Error("此链接无法打开。"); }
+    if (!["https:", "http:", "mailto:"].includes(url.protocol)) throw new Error("只支持网页或邮件链接。");
+    await shell.openExternal(url.href);
+    return null;
+  }
   if (action === "theme") {
     if (value !== undefined) {
       if (!["light", "dark"].includes(value)) throw new Error("请选择浅色或深色主题。");

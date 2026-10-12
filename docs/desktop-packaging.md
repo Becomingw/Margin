@@ -1,12 +1,13 @@
 # Margin desktop development
 
 Download builds from [GitHub Releases](https://github.com/Becomingw/Margin/releases).
-v0.1.0 provides macOS Apple Silicon / Intel and Windows x64 installers. They are
+v0.2.0 provides macOS Apple Silicon / Intel and Windows x64 installers. They are
 unsigned; macOS builds are not notarized. Use `npm run desktop` for development.
 
 The desktop packaging request authorizes an optional Electron distribution layer.
 Electron and electron-builder are development/packaging dependencies only; the web
-server still has one runtime dependency (KaTeX), no bundler and no compilation step.
+server uses KaTeX, markdown-it, markdown-it-footnote and parse5, with no bundler
+and no compilation step.
 The existing web/CLI commands remain usable without Electron.
 
 The desktop main process owns native file dialogs, recent projects, local export
@@ -14,6 +15,8 @@ destinations and a private backend utility process. Renderers are sandboxed, wit
 Node integration disabled and a small context-isolated preload API. A random
 per-launch backend token is injected by the main process, never put in renderer
 URLs or storage. Each server binds loopback on an ephemeral port.
+Explicit clicks on HTTP(S) or mail links open the system browser/mail app through
+a scheme-validated preload action; the review renderer itself cannot navigate away.
 
 Opening edits a selected project in place. Unconfigured projects get a minimal
 manual-review configuration, with compilation off. Importing a review package

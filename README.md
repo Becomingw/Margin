@@ -29,6 +29,9 @@ outline, read text and formulas in the reading view, and move into source editin
 whenever you need to.
 
 - **Two formats, one workflow.** Read, annotate, revise and export both Markdown and LaTeX.
+- **Richer Markdown reading.** Tables, nested lists, task lists, links,
+  local images, footnotes, math and common HTML—including collapsible details—keep
+  their structure while you review. See the [support guide](docs/markdown.md).
 - **Stay oriented in long documents.** Switch files and navigate headings as you check one section against another.
 - **An interface that steps back.** Warm paper, quiet controls, dark mode and narrow-screen layouts leave room for the text.
 
@@ -38,6 +41,15 @@ whenever you need to.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/review-latex-dark.png">
   <img src="docs/images/review-latex-light.png" alt="LaTeX reading view with section navigation and comments in the margins" width="100%">
+</picture>
+</details>
+
+<details>
+<summary><strong>See richer Markdown rendering</strong></summary>
+<br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/markdown-rich-dark.png">
+  <img src="docs/images/markdown-rich-light.png" alt="Markdown tables, nested formatting and source-anchored review comments" width="100%">
 </picture>
 </details>
 
@@ -104,24 +116,25 @@ package in its own workspace.
 
 ## Download and get started
 
-| Platform | v0.1.0 installer |
+| Platform | v0.2.0 installer |
 | --- | --- |
-| macOS · Apple Silicon | [Download DMG](https://github.com/Becomingw/Margin/releases/download/v0.1.0/Margin-0.1.0-mac-arm64.dmg) |
-| macOS · Intel | [Download DMG](https://github.com/Becomingw/Margin/releases/download/v0.1.0/Margin-0.1.0-mac-x64.dmg) |
-| Windows · x64 | [Download installer](https://github.com/Becomingw/Margin/releases/download/v0.1.0/Margin-0.1.0-win-x64.exe) |
+| macOS · Apple Silicon | [Download DMG](https://github.com/Becomingw/Margin/releases/download/v0.2.0/Margin-0.2.0-mac-arm64.dmg) |
+| macOS · Intel | [Download DMG](https://github.com/Becomingw/Margin/releases/download/v0.2.0/Margin-0.2.0-mac-x64.dmg) |
+| Windows · x64 | [Download installer](https://github.com/Becomingw/Margin/releases/download/v0.2.0/Margin-0.2.0-win-x64.exe) |
 
 1. **Install Margin.** On macOS, drag it to Applications; on Windows, run the installer. No separate Node installation needed.
 2. **Open a document or project.** Choose a `.md`, `.tex` or folder, drag it in, or import a review package you received.
 3. **Leave your first note.** Select text to comment, save your edits and revisit them in the changes view.
 
-macOS ZIPs, checksums and verification details are on the [release page](https://github.com/Becomingw/Margin/releases/tag/v0.1.0).
+macOS ZIPs, checksums and verification details are on the [release page](https://github.com/Becomingw/Margin/releases/tag/v0.2.0).
 Current builds are unsigned and macOS builds are not notarized; your system may display an unidentified-publisher prompt.
 
 <details>
 <summary><strong>A few things to know</strong></summary>
 
 - Margin focuses on manual review. There is no built-in AI execution and no model or API key to configure.
-- Markdown supports common structures and math, rather than full HTML rendering. LaTeX is a source-based reading view, not a typeset PDF editor.
+- The Markdown [support guide](docs/markdown.md) lists syntax and limits. Editing
+  remains source-based. LaTeX is a reading view, not a typeset PDF editor.
 - Non-UTF-8 files remain read-only. Review packages are limited to 32 MiB compressed and expanded, and include earlier versions and deleted comments.
 - Packages restore complete reviews; they do not automatically merge branches with the same IDs. Editing `REVIEW.md` alone does not create an importable patch.
 - For the local browser version or source installation, see the [installation guide](docs/INSTALL-FOR-AGENTS.md). Existing users can follow the [migration guide](docs/migration.md).

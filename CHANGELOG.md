@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-10-12
+
+- Expand Markdown reading with aligned tables, nested lists, task checkboxes,
+  reference/autolinks, local images, footnotes, math, callouts, front matter and
+  allow-listed HTML including tables and details. Preserve source-mapped selection
+  comments/edits, original encoding and portable review history.
+- Open relative document/heading links in the workspace and explicit external
+  links in a separate browser. Keep remote images and active HTML disabled.
+- Add rich Markdown browser regression coverage and light/dark/mobile screenshots.
 - Refocus the bilingual README on review features and everyday workflows, simplify
   setup guidance and add acknowledgments to Paper Pal and its contributors.
 

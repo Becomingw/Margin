@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("marginDesktop", Object.freeze({
   importPackage: () => invoke("import-package"),
   home: () => invoke("home"),
   theme: (value) => invoke("theme", value),
+  openLink: (value) => invoke("open-link", value),
   recent: () => invoke("recents"),
   openRecent: (id) => invoke("recent", id),
   exportPackage: () => invoke("export-package"),

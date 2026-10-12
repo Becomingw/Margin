@@ -53,8 +53,9 @@ path resolution or child processes. Report vulnerabilities privately.
 - `tests/`: node:test suites and fictional fixtures.
 
 Do not split the server or app monolith as a side effect. Reuse existing helpers.
-No framework, bundler or transpiler. KaTeX is the sole runtime library; Electron,
-electron-builder and Playwright are development/distribution tools.
+No framework, bundler or transpiler. Runtime libraries are KaTeX, markdown-it,
+markdown-it-footnote and parse5 (Markdown dependency discussion: issue #3).
+Electron, electron-builder and Playwright are development/distribution tools.
 
 ## Commands
 
@@ -65,6 +66,7 @@ npm run demo
 npm run setup -- /path/to/document-or-project --no-compile --json
 npm run doctor -- --json
 npm run screenshots
+npm run test:markdown
 npm run desktop
 npm run test:desktop
 ```

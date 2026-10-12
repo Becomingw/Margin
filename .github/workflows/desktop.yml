@@ -17,12 +17,15 @@ jobs:
           - os: macos-latest
             target: --mac --arm64
             artifact: mac-arm64
+            executable: dist/mac-arm64/Margin.app/Contents/MacOS/Margin
           - os: macos-latest
             target: --mac --x64
             artifact: mac-x64
+            executable: dist/mac/Margin.app/Contents/MacOS/Margin
           - os: windows-latest
             target: --win --x64
             artifact: windows-x64
+            executable: dist/win-unpacked/Margin.exe
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -36,10 +39,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npx playwright install chromium
+      - run: npm run test:markdown
       - run: npm run test:desktop
       - run: npm run desktop:dist -- ${{ matrix.target }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Verify packaged desktop
+        run: npm run test:desktop
+        env:
+          MARGIN_DESKTOP_EXECUTABLE: ${{ github.workspace }}/${{ matrix.executable }}
       - uses: actions/upload-artifact@v4
         with:
           name: margin-${{ matrix.artifact }}

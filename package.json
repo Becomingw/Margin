@@ -1,14 +1,19 @@
 {
   "name": "margin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A local manual review workspace for Markdown and LaTeX manuscripts.",
   "license": "MIT",
   "type": "module",
   "main": "desktop/main.mjs",
   "author": "Margin contributors",
   "homepage": "https://github.com/Becomingw/Margin#readme",
-  "repository": { "type": "git", "url": "git+https://github.com/Becomingw/Margin.git" },
-  "bugs": { "url": "https://github.com/Becomingw/Margin/issues" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Becomingw/Margin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Becomingw/Margin/issues"
+  },
   "keywords": [
     "latex",
     "academic-writing",
@@ -72,12 +77,16 @@
     "desktop:pack": "electron-builder --dir --publish never",
     "desktop:dist": "electron-builder --publish never",
     "test:desktop": "node scripts/desktop-smoke.mjs",
+    "test:markdown": "node scripts/markdown-smoke.mjs",
     "test": "npm run check && npm run test:portable && npm run test:suite",
     "test:portable": "node tests/portable.mjs",
     "test:suite": "node tests/run.mjs"
   },
   "dependencies": {
-    "katex": "^0.18.1"
+    "katex": "^0.18.1",
+    "markdown-it": "^15.0.2",
+    "markdown-it-footnote": "^4.0.0",
+    "parse5": "^8.0.1"
   },
   "devDependencies": {
     "electron": "44.7.0",

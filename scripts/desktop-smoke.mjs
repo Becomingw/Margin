@@ -23,6 +23,20 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
   await page.waitForURL("margin://app/");
   await page.waitForSelector("#open-file");
+  await instance.evaluate(({ shell, dialog }) => {
+    shell.openExternal = async (url) => { globalThis.marginOpenedLink = url; };
+    // Expected validation failures show native dialogs; acknowledge them without
+    // human interaction before exercising rejected protocols on CI.
+    globalThis.marginLinkErrors = [];
+    dialog.showMessageBox = async (_window, options) => { globalThis.marginLinkErrors.push(options.detail); return { response: 0 }; };
+  });
+  await page.evaluate(() => window.marginDesktop.openLink("https://example.org/review"));
+  assert.equal(await instance.evaluate(() => globalThis.marginOpenedLink), "https://example.org/review");
+  for (const url of ["file:///private/file", "javascript:alert(1)", "data:text/html,test", "https://example.org/\nfile"]) {
+    assert.equal(await page.evaluate(async (value) => { try { await window.marginDesktop.openLink(value); return false; } catch { return true; } }, url), true);
+  }
+  assert.equal(await instance.evaluate(() => globalThis.marginOpenedLink), "https://example.org/review", "unsafe schemes never reach the native shell");
+  assert.equal(await instance.evaluate(() => globalThis.marginLinkErrors.length), 4);
   await page.evaluate(() => window.marginDesktop.theme("dark"));
   assert.equal(await page.evaluate(() => typeof require), "undefined");
   assert.equal(await page.evaluate(() => typeof process), "undefined");

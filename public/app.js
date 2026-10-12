@@ -140,6 +140,123 @@ function appendMappedText(element, block) {
     }
   }
 }
+
+function markdownTarget(value) {
+  if (!value || /^[a-z][a-z\d+.-]*:/i.test(value) || value.startsWith("//") || /[\u0000-\u001f\\]/.test(value)) return null;
+  try {
+    const url = new URL(value, `http://margin.invalid/${state.document.path.split("/").map(encodeURIComponent).join("/")}`);
+    if (url.origin !== "http://margin.invalid") return null;
+    const path = decodeURIComponent(url.pathname.slice(1));
+    if (/[\u0000-\u001f\\]/.test(path)) return null;
+    return { path, hash: decodeURIComponent(url.hash.slice(1)) };
+  } catch { return null; }
+}
+
+function appendMarkdown(element, block) {
+  const comments = (state.review?.comments || []).filter((item) => item.status === "open" && ["attached", "modified"].includes(item.anchor.status));
+  const marked = (i) => state.view === "current" && block.displayStarts[i] !== null && comments.some((item) => item.anchor.start < block.start + block.displayEnds[i] && item.anchor.end > block.start + block.displayStarts[i]);
+  function render(item) {
+    if (item.tag === "math") {
+      const atom = node("span", "", "md-leaf md-math");
+      atom.dataset.mdFrom = item.from; atom.dataset.mdTo = item.to; atom.dataset.mdAtomic = "true";
+      if (window.katex) window.katex.render(item.latex, atom, { throwOnError: false, trust: false, strict: "ignore", displayMode: item.display });
+      else atom.textContent = item.latex;
+      if (marked(item.from)) atom.classList.add("marked");
+      return atom;
+    }
+    if (item.tag === "img") {
+      const wrapper = node("span", "", "md-leaf md-image");
+      wrapper.dataset.mdFrom = item.from; wrapper.dataset.mdTo = item.to; wrapper.dataset.mdAtomic = "true";
+      if (marked(item.from)) wrapper.classList.add("marked");
+      const target = markdownTarget(item.attrs.src);
+      if (target && /\.(png|jpe?g|gif|webp|svg)$/i.test(target.path)) {
+        const image = node("img");
+        image.alt = item.attrs.alt || "图片";
+        image.loading = "lazy";
+        for (const name of ["width", "height", "title"]) if (item.attrs[name]) image.setAttribute(name, item.attrs[name]);
+        image.src = `/api/asset?path=${encodeURIComponent(target.path)}`;
+        image.addEventListener("error", () => { wrapper.textContent = `${image.alt}（图片未找到）`; wrapper.classList.add("md-image-placeholder"); });
+        wrapper.append(image);
+      } else {
+        wrapper.textContent = `${item.text}${item.remote ? "（远程图片未加载）" : "（图片不可用）"}`;
+        wrapper.classList.add("md-image-placeholder");
+      }
+      return wrapper;
+    }
+    if (item.text !== undefined) {
+      const leaf = node("span", "", "md-leaf");
+      leaf.dataset.mdFrom = item.from; leaf.dataset.mdTo = item.to;
+      if (!item.mapped) leaf.dataset.mdUnmapped = "true";
+      for (let i = item.from; i < item.to;) {
+        const active = marked(i);
+        let end = i + 1;
+        while (end < item.to && marked(end) === active) end += 1;
+        leaf.append(node("span", block.display.slice(i, end), active ? "marked" : ""));
+        i = end;
+      }
+      return leaf;
+    }
+    const result = node(item.tag);
+    for (const [name, value] of Object.entries(item.attrs || {})) result.setAttribute(name, value);
+    for (const child of item.children || []) result.append(render(child));
+    if (item.tag === "a" && item.attrs.href) {
+      result.addEventListener("click", async (event) => {
+        event.preventDefault();
+        if (!window.getSelection().isCollapsed) return;
+        try {
+          if (/^(https?:|mailto:)/i.test(item.attrs.href)) {
+            if (desktop) await desktop.openLink(item.attrs.href);
+            else window.open(item.attrs.href, "_blank", "noopener,noreferrer");
+            return;
+          }
+          const target = markdownTarget(item.attrs.href);
+          if (!target) return;
+          if (target.path !== state.document.path) {
+            if (!/\.(md|tex)$/i.test(target.path)) { toast("此链接不是可审阅的 Markdown 或 LaTeX 文档。"); return; }
+            if ($("#composer").open) return;
+            await loadDocument(target.path);
+          }
+          if (target.hash) {
+            const id = target.hash.startsWith("md-") ? target.hash : `md-${target.hash}`;
+            const destination = document.getElementById(id);
+            for (let parent = destination?.parentElement; parent; parent = parent.parentElement) if (parent.tagName === "DETAILS") parent.open = true;
+            destination?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        } catch (error) { toast(error.message); }
+      });
+    }
+    if (/^h[1-6]$/.test(item.tag)) {
+      const link = button(result.textContent, () => result.scrollIntoView({ behavior: "smooth", block: "start" }));
+      link.style.paddingLeft = `${12 + (Number(item.tag[1]) - 1) * 12}px`;
+      $("#outline").append(link);
+    }
+    if (item.tag === "table") { const scroll = node("div", "", "md-table-scroll"); scroll.tabIndex = 0; scroll.setAttribute("aria-label", "表格，可横向滚动"); scroll.append(result); return scroll; }
+    return result;
+  }
+  element.dataset.markdown = "true";
+  element.classList.add("markdown-content");
+  for (const item of block.tree) element.append(render(item));
+}
+
+function markdownOffset(root, container, offset, isEnd) {
+  const parent = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
+  const leaf = parent.closest(".md-leaf");
+  if (leaf && root.contains(leaf)) {
+    if (leaf.dataset.mdUnmapped) return null;
+    if (leaf.dataset.mdAtomic) return Number(isEnd ? leaf.dataset.mdTo : leaf.dataset.mdFrom);
+    const range = document.createRange();
+    range.selectNodeContents(leaf); range.setEnd(container, offset);
+    return Number(leaf.dataset.mdFrom) + range.toString().length;
+  }
+  let previous = null;
+  for (const item of root.querySelectorAll(".md-leaf")) {
+    const range = document.createRange(); range.selectNode(item);
+    if (range.comparePoint(container, offset) <= 0) return Number(isEnd && previous ? previous.dataset.mdTo : item.dataset.mdFrom);
+    previous = item;
+  }
+  return previous ? Number(previous.dataset.mdTo) : null;
+}
+
 async function renderDocument() {
   const payload = state.document;
   if (!payload) return;
@@ -159,13 +276,14 @@ async function renderDocument() {
   $("#outline").replaceChildren();
   if (visible.frontMatter?.title) target.append(node("h1", visible.frontMatter.title.display || visible.frontMatter.title.text || visible.frontMatter.title));
   for (const block of visible.blocks) {
-    if (block.hidden || !block.display?.trim()) continue;
+    if (block.hidden || (!block.tree && !block.display?.trim())) continue;
     const section = node("section", "", `text-block kind-${block.kind}`);
     section.id = `block-${block.index}`;
-    const content = node(block.kind === "heading" ? `h${Math.min(6, block.level || 2)}` : ["code", "table"].includes(block.kind) ? "pre" : "div", "", "block-content");
+    const content = node(block.tree ? "div" : block.kind === "heading" ? `h${Math.min(6, block.level || 2)}` : ["code", "table"].includes(block.kind) ? "pre" : "div", "", "block-content");
     content.dataset.blockIndex = String(block.index);
     const semantic = block.semantic;
-    if (semantic && ["code", "table", "figure", "bibliography"].includes(block.kind)) {
+    if (block.tree) appendMarkdown(content, block);
+    else if (semantic && ["code", "table", "figure", "bibliography"].includes(block.kind)) {
       content.dataset.wholeBlock = "true";
       if (block.kind === "code") content.append(node("span", semantic.text || block.raw));
       else if (block.kind === "table") {
@@ -197,7 +315,7 @@ async function renderDocument() {
     } else if (semantic?.latex && block.kind === "math") appendMappedText(content, { ...block, annotations: [{ type: "math", latex: semantic.latex, start: 0, end: block.display.length, display: true }] });
     else appendMappedText(content, block);
     section.append(content);
-    if (block.kind === "heading") {
+    if (block.kind === "heading" && !block.tree) {
       const link = button(block.display.trim(), () => section.scrollIntoView({ behavior: "smooth", block: "start" }));
       link.style.paddingLeft = `${12 + ((block.level || 1) - 1) * 12}px`;
       $("#outline").append(link);
@@ -224,6 +342,7 @@ function selectText() {
   const last = contentFor(range.endContainer);
   if (!first || !last) return;
   const offsetAt = (root, container, offset, isEnd) => {
+    if (root.dataset.markdown) return markdownOffset(root, container, offset, isEnd);
     const atom = (container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement)?.closest(".math-atom");
     if (atom) return Number(isEnd ? atom.dataset.displayEnd : atom.dataset.displayStart);
     const partial = document.createRange();
@@ -237,6 +356,7 @@ function selectText() {
   const endBlock = state.document.blocks[Number(last.dataset.blockIndex)];
   const startOffset = offsetAt(first, range.startContainer, range.startOffset);
   const endOffset = offsetAt(last, range.endContainer, range.endOffset, true);
+  if (startOffset === null || endOffset === null || startBlock.displayStarts[startOffset] === null || endBlock.displayEnds[endOffset - 1] === null) return;
   const start = first.dataset.wholeBlock ? startBlock.start : startBlock.start + (startBlock.displayStarts[startOffset] ?? startBlock.raw.length);
   const end = last.dataset.wholeBlock ? endBlock.end : endBlock.start + (endBlock.displayEnds[endOffset - 1] ?? 0);
   if (end <= start) return;

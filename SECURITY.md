@@ -17,6 +17,9 @@ product environment variables do not alter it.
 Every request passes a Host allow-list. State-changing requests require a
 matching Origin, or `X-Margin: 1` when Origin is absent, and JSON content. The
 browser serves scripts, fonts and styles locally under a strict CSP.
+Markdown and embedded HTML are parsed locally into an allow-listed element tree;
+scripts, handlers, embeds and arbitrary styles are discarded. Remote images are
+not requested. Local images use the existing source-root-confined asset endpoint.
 
 Only explicit author actions write source. Writes resolve symlinks, stay within
 `sourceRoot`, are serialized and atomic. Interrupted review transactions recover
@@ -40,6 +43,8 @@ process environments. Renderers are sandboxed, context-isolated and have no Node
 integration. Preload exposes specific workspace actions only; IPC verifies the
 window and main frame. Navigation, permissions and network destinations are
 restricted. Native exports cannot overwrite the active project's source/history.
+An explicit link action permits only HTTP(S) and mailto URLs in the system handler;
+file, data, JavaScript and custom protocol links cannot reach the native shell.
 
 ## Configuration and optional processes
 

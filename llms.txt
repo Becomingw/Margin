@@ -3,7 +3,7 @@
 > Independent local manual-review workspace for Markdown and LaTeX. Authors
 > read, annotate, revise and exchange portable review packages. No built-in AI.
 
-Node.js 20+, one runtime library (KaTeX), no browser bundler. Optional Electron
+Node.js 20+, local KaTeX/Markdown/HTML parsing libraries, no browser bundler. Optional Electron
 desktop shell. No login, model ID or API key. New project data uses `.margin.json`
 and `.margin/`; old packages remain importable for migration.
 
@@ -15,6 +15,7 @@ Local documentation:
 - [Installation](docs/INSTALL-FOR-AGENTS.md)
 - [Configuration](docs/configuration.md)
 - [HTTP API](docs/api.md)
+- [Markdown support](docs/markdown.md)
 - [Review packages](docs/review-package.md)
 - [Migration](docs/migration.md)
 - [Security](SECURITY.md)

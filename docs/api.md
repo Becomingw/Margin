@@ -34,6 +34,15 @@ conflict, 410 retired AI feature, 413 size limit, 422 invalid legacy save text,
 Paths are relative to the configured project and confined to `sourceRoot` after
 resolving symlinks. New review documents must end in `.md` or `.tex`.
 
+Markdown blocks include an allow-listed `tree` of `{tag, attrs, children}` nodes.
+Text leaves carry `text`, `from`/`to` offsets into `block.display`, and `mapped`.
+`displayStarts`/`displayEnds` map each UTF-16 display code unit to a block-relative
+source span (end exclusive); `null` means generated/unmapped content and must not
+be used as a selection endpoint. Decoded entities can share a complete source span.
+Math and image nodes are atomic and retain their source range. Hidden structure
+blocks preserve gaps so concatenating every block's `raw` exactly restores source.
+Historical revision rendering uses the same structure. See [Markdown support](markdown.md).
+
 ## Review writes
 
 Every route below is POST, returns 200 JSON and uses the project lock.
