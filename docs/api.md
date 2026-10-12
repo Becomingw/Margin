@@ -39,7 +39,11 @@ Text leaves carry `text`, `from`/`to` offsets into `block.display`, and `mapped`
 `displayStarts`/`displayEnds` map each UTF-16 display code unit to a block-relative
 source span (end exclusive); `null` means generated/unmapped content and must not
 be used as a selection endpoint. Decoded entities can share a complete source span.
-Math and image nodes are atomic and retain their source range. Hidden structure
+Math and image nodes are atomic and retain their source range. Markdown math
+nodes now include `svg` (an allow-listed MathJax geometry tree) or `error` (a
+readable diagnostic); `latex` remains the original formula content. Clients
+create SVG elements from the tree rather than injecting arbitrary HTML.
+Hidden structure
 blocks preserve gaps so concatenating every block's `raw` exactly restores source.
 Historical revision rendering uses the same structure. See [Markdown support](markdown.md).
 

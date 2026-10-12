@@ -423,7 +423,7 @@ describe("command line entry points", () => {
     assert.equal(pkg.license, "MIT");
     assert.deepEqual(pkg.bin, { "margin": "bin/margin.mjs" });
     for (const name of ["setup", "doctor", "start", "dev", "demo", "check", "test", "test:markdown"]) assert.ok(pkg.scripts[name], name);
-    assert.deepEqual(Object.keys(pkg.dependencies), ["katex", "markdown-it", "markdown-it-footnote", "parse5"]);
+    assert.deepEqual(Object.keys(pkg.dependencies), ["katex", "markdown-it", "markdown-it-footnote", "mathjax-full", "parse5"]);
   });
 
   it("the published package lists every module it needs and nothing for development", async () => {

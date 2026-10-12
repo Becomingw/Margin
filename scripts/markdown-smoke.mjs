@@ -12,6 +12,7 @@ try {
   const hostile = '\n\n<div onclick="window.untrusted=true"><script>window.untrusted=true</script><iframe src="https://evil.example/"></iframe><img src="https://evil.example/x" onerror="window.untrusted=true"><a href="javascript:alert(1)">Blocked link</a><style>body{display:none}</style><svg onload="window.untrusted=true"></svg></div>\n';
   const project = await makeProject({ files: {
     "notes/guide.md": original,
+    "notes/math.md": await fs.readFile(path.join(appRoot, "tests/fixtures/markdown/math.md"), "utf8"),
     "notes/hostile.md": hostile,
     "notes/other.md": "# 关联文档\n\n可以继续审阅。\n",
     "notes/figure.svg": '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><rect width="400" height="120" rx="8" fill="#eeebf7"/><text x="30" y="65" fill="#6458b5" font-size="24">Fictional evidence</text></svg>',
@@ -29,8 +30,8 @@ try {
   assert.equal(await page.locator(".markdown-content table").count(), 2);
   assert.equal(await page.locator(".markdown-content input[type=checkbox]").count(), 2);
   assert.equal(await page.locator(".markdown-content input:checked").count(), 1);
-  assert.equal(await page.locator(".markdown-content .katex").count(), 3);
-  assert.equal(await page.locator(".markdown-content .katex-error").count(), 0);
+  assert.equal(await page.locator(".markdown-content mjx-container").count(), 3);
+  assert.equal(await page.locator(".markdown-content .md-math-error").count(), 0);
   assert.ok(await page.locator(".markdown-content ul ul").count());
   assert.equal(await page.locator(".markdown-content table").first().locator("th").last().evaluate((el) => getComputedStyle(el).textAlign), "right");
   await page.locator(".md-image img").scrollIntoViewIfNeeded();
@@ -68,6 +69,26 @@ try {
     await page.waitForFunction(() => !document.querySelector("#composer-submit").disabled);
     await page.waitForFunction(() => document.querySelector("#toast").textContent.includes("已保存"));
   }
+  // Selection actions follow the live selection, including keyboard and native
+  // selection changes that do not dispatch pointerup on the document.
+  await select(".markdown-content table td strong", "需要复核");
+  await page.evaluate(() => window.getSelection().removeAllRanges());
+  await page.waitForFunction(() => document.querySelector("#selection-actions").hidden);
+  await select(".markdown-content table td strong", "需要复核");
+  await page.evaluate(() => window.getSelection().collapseToEnd());
+  await page.waitForFunction(() => document.querySelector("#selection-actions").hidden);
+  await select(".markdown-content table td strong", "需要复核");
+  await page.locator(".markdown-content h1").click();
+  await page.waitForFunction(() => document.querySelector("#selection-actions").hidden);
+  await select(".markdown-content table td strong", "需要复核");
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.querySelector("#selection-actions").hidden);
+  await select(".markdown-content table td strong", "需要复核");
+  await page.evaluate(() => {
+    const range = document.createRange(); range.selectNodeContents(document.querySelector("#project-title"));
+    const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+  });
+  await page.waitForFunction(() => document.querySelector("#selection-actions").hidden);
   for (const [selector, text, raw, next] of [
     [".markdown-content table td strong", "需要复核", "需要复核", "已复核"],
     [".markdown-content table td code", "a|b", "a\\|b", "c\\|d"],
@@ -106,6 +127,38 @@ try {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator('a[href="other.md"]').click();
   await page.waitForFunction(() => document.querySelector("#document").dataset.path === "notes/other.md");
+  await page.locator("#document-select").selectOption("notes/math.md");
+  await page.waitForFunction(() => document.querySelector("#document").dataset.path === "notes/math.md");
+  assert.equal(await page.locator(".md-math").count(), 15);
+  assert.equal(await page.locator(".md-math mjx-container").count(), 14);
+  assert.equal(await page.locator(".md-math-error").count(), 1);
+  assert.equal(await page.locator(".markdown-content table").first().locator("tbody td").count(), 12);
+  assert.equal(await page.locator(".markdown-content table").nth(1).locator("tbody td").count(), 6);
+  assert.deepEqual(await page.locator(".markdown-content table").nth(1).locator(".md-math").evaluateAll((items) => items.map((el) => el.getAttribute("aria-label"))), ["P(A|B)", "|x|", "\\|v\\|"]);
+  // Formula SVG is selected atomically, so a replacement includes delimiters.
+  await page.locator('.md-math[aria-label="D_f"]').scrollIntoViewIfNeeded();
+  await page.evaluate(() => {
+    const range = document.createRange(); range.selectNodeContents(document.querySelector('.md-math[aria-label="D_f"]'));
+    const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+  });
+  await page.waitForFunction(() => !document.querySelector("#selection-actions").hidden);
+  await page.locator("#selection-replace").click();
+  assert.equal(await page.locator("#composer-body").inputValue(), "$D_f$");
+  await page.locator("#composer-body").fill("$D_g$");
+  await submit();
+  assert.equal(await page.locator('.md-math[aria-label="D_g"] mjx-container').count(), 1);
+  await page.locator('[data-view="original"]').click();
+  await page.waitForSelector('.md-math[aria-label="D_f"] mjx-container');
+  await page.locator('[data-view="current"]').click();
+  await page.waitForSelector('.md-math[aria-label="D_g"] mjx-container');
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((value) => { document.documentElement.dataset.theme = value; document.querySelector(".document-pane").scrollTop = 0; document.querySelector("#toast").hidden = true; }, theme);
+    await page.screenshot({ path: path.join(appRoot, `docs/images/markdown-math-${theme}.png`) });
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await page.screenshot({ path: path.join(appRoot, "docs/images/markdown-math-mobile.png"), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator("#document-select").selectOption("notes/hostile.md");
   await page.waitForFunction(() => document.querySelector("#document").dataset.path === "notes/hostile.md");
   assert.equal(await page.evaluate(() => window.untrusted), undefined);

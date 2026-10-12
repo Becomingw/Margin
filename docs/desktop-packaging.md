@@ -1,12 +1,12 @@
 # Margin desktop development
 
 Download builds from [GitHub Releases](https://github.com/Becomingw/Margin/releases).
-v0.2.0 provides macOS Apple Silicon / Intel and Windows x64 installers. They are
+v0.2.1 provides macOS Apple Silicon / Intel and Windows x64 installers. They are
 unsigned; macOS builds are not notarized. Use `npm run desktop` for development.
 
 The desktop packaging request authorizes an optional Electron distribution layer.
 Electron and electron-builder are development/packaging dependencies only; the web
-server uses KaTeX, markdown-it, markdown-it-footnote and parse5, with no bundler
+server uses KaTeX, MathJax, markdown-it, markdown-it-footnote and parse5, with no bundler
 and no compilation step.
 The existing web/CLI commands remain usable without Electron.
 

@@ -116,17 +116,17 @@ package in its own workspace.
 
 ## Download and get started
 
-| Platform | v0.2.0 installer |
+| Platform | v0.2.1 installer |
 | --- | --- |
-| macOS · Apple Silicon | [Download DMG](https://github.com/Becomingw/Margin/releases/download/v0.2.0/Margin-0.2.0-mac-arm64.dmg) |
-| macOS · Intel | [Download DMG](https://github.com/Becomingw/Margin/releases/download/v0.2.0/Margin-0.2.0-mac-x64.dmg) |
-| Windows · x64 | [Download installer](https://github.com/Becomingw/Margin/releases/download/v0.2.0/Margin-0.2.0-win-x64.exe) |
+| macOS · Apple Silicon | [Download DMG](https://github.com/Becomingw/Margin/releases/download/v0.2.1/Margin-0.2.1-mac-arm64.dmg) |
+| macOS · Intel | [Download DMG](https://github.com/Becomingw/Margin/releases/download/v0.2.1/Margin-0.2.1-mac-x64.dmg) |
+| Windows · x64 | [Download installer](https://github.com/Becomingw/Margin/releases/download/v0.2.1/Margin-0.2.1-win-x64.exe) |
 
 1. **Install Margin.** On macOS, drag it to Applications; on Windows, run the installer. No separate Node installation needed.
 2. **Open a document or project.** Choose a `.md`, `.tex` or folder, drag it in, or import a review package you received.
 3. **Leave your first note.** Select text to comment, save your edits and revisit them in the changes view.
 
-macOS ZIPs, checksums and verification details are on the [release page](https://github.com/Becomingw/Margin/releases/tag/v0.2.0).
+macOS ZIPs, checksums and verification details are on the [release page](https://github.com/Becomingw/Margin/releases/tag/v0.2.1).
 Current builds are unsigned and macOS builds are not notarized; your system may display an unidentified-publisher prompt.
 
 <details>

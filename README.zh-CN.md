@@ -106,17 +106,17 @@
 
 ## 下载与开始
 
-| 平台 | v0.2.0 安装包 |
+| 平台 | v0.2.1 安装包 |
 | --- | --- |
-| macOS · Apple Silicon | [下载 DMG](https://github.com/Becomingw/Margin/releases/download/v0.2.0/Margin-0.2.0-mac-arm64.dmg) |
-| macOS · Intel | [下载 DMG](https://github.com/Becomingw/Margin/releases/download/v0.2.0/Margin-0.2.0-mac-x64.dmg) |
-| Windows · x64 | [下载安装程序](https://github.com/Becomingw/Margin/releases/download/v0.2.0/Margin-0.2.0-win-x64.exe) |
+| macOS · Apple Silicon | [下载 DMG](https://github.com/Becomingw/Margin/releases/download/v0.2.1/Margin-0.2.1-mac-arm64.dmg) |
+| macOS · Intel | [下载 DMG](https://github.com/Becomingw/Margin/releases/download/v0.2.1/Margin-0.2.1-mac-x64.dmg) |
+| Windows · x64 | [下载安装程序](https://github.com/Becomingw/Margin/releases/download/v0.2.1/Margin-0.2.1-win-x64.exe) |
 
 1. **安装 Margin**：macOS 拖入「应用程序」；Windows 运行安装程序。无需另外安装 Node。
 2. **打开文档或项目**：选择 `.md`、`.tex` 或文件夹，也可以拖入，或导入收到的审阅包。
 3. **开始第一条批注**：选中文字留下意见，修改后保存，再通过修订视图回看变化。
 
-macOS ZIP、校验和及验证范围见[发布页](https://github.com/Becomingw/Margin/releases/tag/v0.2.0)。
+macOS ZIP、校验和及验证范围见[发布页](https://github.com/Becomingw/Margin/releases/tag/v0.2.1)。
 当前安装包未签名，macOS 未公证，系统可能显示开发者身份提示。
 
 <details>

@@ -2,6 +2,13 @@ import { createHash } from "node:crypto";
 import MarkdownIt from "markdown-it";
 import footnote from "markdown-it-footnote";
 import { parseFragment } from "parse5";
+import { mathjax } from "mathjax-full/js/mathjax.js";
+import { TeX } from "mathjax-full/js/input/tex.js";
+import { SVG } from "mathjax-full/js/output/svg.js";
+import { liteAdaptor } from "mathjax-full/js/adaptors/liteAdaptor.js";
+import { RegisterHTMLHandler } from "mathjax-full/js/handlers/html.js";
+import { SafeHandler } from "mathjax-full/js/ui/safe/SafeHandler.js";
+import { AllPackages } from "mathjax-full/js/input/tex/AllPackages.js";
 
 const md = new MarkdownIt({ html: true, linkify: false, typographer: false, maxNesting: 40 }).use(footnote);
 // Keep text tokens separate: joining decoded text would discard its provenance.
@@ -10,6 +17,77 @@ md.inline.ruler.disable(["linkify", "footnote_inline"]);
 md.inline.ruler2.disable("fragments_join");
 const escape = md.utils.escapeHtml;
 const pairs = (start, end) => Array.from({ length: end - start }, (_, i) => [start + i, start + i + 1]);
+const mathAdaptor = liteAdaptor();
+SafeHandler(RegisterHTMLHandler(mathAdaptor));
+
+// Only geometry and local typography produced by MathJax cross into the client.
+// This is separate from manuscript HTML: SVG supplied by a document stays blocked.
+const mathTags = new Set(["mjx-container", "svg", "g", "path", "rect", "line", "text", "title", "defs", "use", "a"]);
+const mathAttributes = new Set("jax display width height role focusable viewBox preserveAspectRatio d x y x1 x2 y1 y2 rx ry transform stroke-width stroke-dasharray stroke-linecap stroke-linejoin font-size font-family font-style font-weight text-anchor data-mml-node data-c data-mjx-texclass data-line data-frame data-background data-table".split(" "));
+function mathTree(html) {
+  let error = null;
+  function visit(node) {
+    if (node.nodeName === "#text") return { text: node.value };
+    if (!mathTags.has(node.tagName)) return null;
+    const attrs = {};
+    for (const { name, value } of node.attrs || []) {
+      if (name === "data-mjx-error") error = value;
+      if (mathAttributes.has(name)) attrs[name] = value;
+      else if (["fill", "stroke", "color"].includes(name) && /^(?:[a-z]+|#[\da-f]{3,8}|rgba?\([\d.,%\s]+\))$/i.test(value)) attrs[name] = value;
+      else if (name === "class" && /^(?:MathJax|mjx-[\w-]+)(?: (?:MathJax|mjx-[\w-]+))*$/.test(value)) attrs[name] = value;
+      else if (name === "id" && value.startsWith("mjx-")) attrs[name] = value;
+      else if (name === "href" && value.startsWith("#mjx-")) attrs.href = value;
+      else if (name === "style") {
+        const declarations = value.split(";").map((entry) => entry.trim()).filter((entry) => /^(vertical-align|min-width|width|height|margin-left|margin-right):\s*-?[\d.]+(?:ex|em|px|%)?$/.test(entry));
+        if (declarations.length) attrs.style = declarations.join("; ");
+      }
+    }
+    if (attrs["data-mml-node"] === "merror") error ||= "公式语法或命令暂不支持";
+    return { tag: node.tagName, attrs, children: (node.childNodes || []).map(visit).filter(Boolean) };
+  }
+  const tree = parseFragment(html).childNodes.map(visit).filter(Boolean);
+  return { tree, error };
+}
+
+function typesetMath(blocks) {
+  const nodes = [];
+  function collect(tree) {
+    for (const node of tree) {
+      if (node.tag === "math") nodes.push(node);
+      else if (node.children) collect(node.children);
+    }
+  }
+  for (const block of blocks) collect(block.tree);
+  if (!nodes.length) return;
+  // A fresh TeX context shares macros/labels within this document but never leaks
+  // them to another file or revision. Document render handles forward references.
+  const tex = new TeX({ packages: [...AllPackages.filter((name) => !["action", "html", "noerrors", "noundefined"].includes(name)), "physics"], tags: "ams", maxMacros: 1000, maxBuffer: 20000 });
+  const document = mathjax.document("", {
+    InputJax: tex,
+    OutputJax: new SVG({ fontCache: "none" }),
+    safeOptions: { allow: { URLs: "none", classes: "none", cssIDs: "none", styles: "none" } },
+  });
+  const items = [];
+  for (const node of nodes) {
+    const text = mathAdaptor.text(node.latex);
+    const container = mathAdaptor.node("div", {}, [text]);
+    mathAdaptor.append(document.document.body, container);
+    const item = new document.options.MathItem(node.latex, tex, node.display, { node: text, n: 0, delim: "" }, { node: text, n: node.latex.length, delim: "" });
+    document.math.push(item);
+    items.push(item);
+  }
+  document.processed.set("findMath");
+  try {
+    document.render();
+    for (const [index, item] of items.entries()) {
+      const { tree, error } = mathTree(mathAdaptor.outerHTML(item.typesetRoot));
+      if (error) nodes[index].error = error;
+      else nodes[index].svg = tree;
+    }
+  } catch {
+    for (const node of nodes) node.error = "公式暂无法排版，请检查公式语法或使用源码修订。";
+  }
+}
 
 // Parser coordinates refer to normalized text. This boundary map preserves BOM,
 // CRLF and UTF-16 offsets without ever normalizing the author's source on disk.
@@ -100,43 +178,115 @@ md.inline.tokenize = function (state) {
   if (state.pending) state.pushPending();
 };
 
-md.inline.ruler.before("escape", "margin_math", (state, silent) => {
-  const start = state.pos;
-  const rest = state.src.slice(start);
+function escapedAt(source, index) {
+  let slashes = 0;
+  while (index > 0 && source[--index] === "\\") slashes += 1;
+  return slashes % 2 === 1;
+}
+
+function mathRange(source, start, max = source.length) {
+  if (escapedAt(source, start)) return null;
+  const rest = source.slice(start, max);
   const marker = rest.startsWith("\\(") ? "\\(" : rest.startsWith("\\[") ? "\\[" : rest.startsWith("$$") ? "$$" : rest[0] === "$" ? "$" : null;
-  if (!marker || (marker === "$" && /\s/.test(rest[1] || " "))) return false;
+  if (!marker || (marker === "$" && /\s/.test(rest[1] || " "))) return null;
   const closer = marker === "\\(" ? "\\)" : marker === "\\[" ? "\\]" : marker;
   let end = start + marker.length;
-  while ((end = state.src.indexOf(closer, end)) >= 0) {
-    if (state.src[end - 1] !== "\\" && (marker !== "$" || (!/\s/.test(state.src[end - 1]) && !/\d/.test(state.src[end + 1] || "")))) break;
+  while ((end = source.indexOf(closer, end)) >= 0 && end + closer.length <= max) {
+    if (!escapedAt(source, end) && (marker !== "$" || (!/\s/.test(source[end - 1]) && !/\d/.test(source[end + 1] || "")))) break;
     end += closer.length;
   }
-  if (end < 0 || (marker === "$" && state.src.slice(start, end).includes("\n"))) return false;
+  if (end < 0 || end + closer.length > max || (marker === "$" && source.slice(start, end).includes("\n"))) return null;
+  return { from: start + marker.length, to: end, end: end + closer.length, display: marker === "$$" || marker === "\\[" };
+}
+
+md.inline.ruler.before("escape", "margin_math", (state, silent) => {
+  const range = mathRange(state.src, state.pos, state.posMax);
+  if (!range) return false;
   if (!silent) {
     const token = state.push("margin_math", "", 0);
-    token.content = state.src.slice(start + marker.length, end);
-    token.meta = { display: marker === "$$" || marker === "\\[" };
+    token.content = state.src.slice(range.from, range.to);
+    token.meta = { display: range.display };
   }
-  state.pos = end + closer.length;
+  state.pos = range.end;
   return true;
 });
 
 md.block.ruler.before("fence", "margin_math_block", (state, start, end, silent) => {
   const line = state.src.slice(state.bMarks[start] + state.tShift[start], state.eMarks[start]);
-  const marker = line.trim() === "$$" ? "$$" : line.trim() === "\\[" ? "\\[" : null;
-  if (!marker) return false;
-  const closer = marker === "$$" ? "$$" : "\\]";
-  let next = start + 1;
-  while (next < end && state.src.slice(state.bMarks[next] + state.tShift[next], state.eMarks[next]).trim() !== closer) next += 1;
+  const marker = line.startsWith("$$") ? "$$" : line.startsWith("\\[") ? "\\[" : null;
+  const environment = line.match(/^\\begin\{((?:equation|align|alignat|gather|multline|eqnarray|displaymath)\*?)\}/)?.[1];
+  if (!marker && !environment) return false;
+  const closer = marker === "$$" ? "$$" : marker === "\\[" ? "\\]" : `\\end{${environment}}`;
+  let next = start;
+  let close = -1;
+  while (next < end) {
+    const content = state.src.slice(state.bMarks[next] + state.tShift[next], state.eMarks[next]);
+    let at = next === start ? (marker?.length || 0) : 0;
+    while ((at = content.indexOf(closer, at)) >= 0) {
+      if (!escapedAt(content, at) && !content.slice(at + closer.length).trim()) { close = at; break; }
+      at += closer.length;
+    }
+    if (close >= 0) break;
+    next += 1;
+  }
   if (next === end) return false;
   if (!silent) {
     const token = state.push("margin_math_block", "", 0);
-    token.content = state.getLines(start + 1, next, state.blkIndent, false);
+    const content = state.getLines(start, next + 1, state.blkIndent, false).trim();
+    token.content = marker ? content.slice(marker.length, -closer.length).trim() : content;
     token.map = [start, next + 1];
     state.line = next + 1;
   }
   return true;
 }, { alt: ["paragraph", "blockquote", "list"] });
+
+function mathPipes(line) {
+  const pipes = new Set();
+  for (let i = 0; i < line.length;) {
+    // Backtick code is opaque to math parsing, just as it is in inline rules.
+    if (line[i] === "`" && !escapedAt(line, i)) {
+      const ticks = line.slice(i).match(/^`+/)[0];
+      const end = line.indexOf(ticks, i + ticks.length);
+      if (end >= 0) { i = end + ticks.length; continue; }
+    }
+    const range = line[i] === "$" || line[i] === "\\" ? mathRange(line, i) : null;
+    if (!range) { i += 1; continue; }
+    for (let j = range.from; j < range.to; j += 1) if (line[j] === "|") pipes.add(j);
+    i = range.end;
+  }
+  return pipes;
+}
+
+// GFM splits cells before inline parsing, including pipes in formulas and the
+// backslashes in TeX's \|. Shield just those pipes while the upstream table rule
+// runs, with one-code-unit placeholders so all source coordinates remain exact.
+const tableRule = md.block.ruler.__rules__.find((rule) => rule.name === "table").fn;
+md.block.ruler.at("table", (state, start, end, silent) => {
+  const source = state.src;
+  if (start + 1 >= end || !source.slice(state.bMarks[start], state.eMarks[start]).includes("|") ||
+      !/^[\s|:-]+$/.test(source.slice(state.bMarks[start + 1], state.eMarks[start + 1]))) return tableRule(state, start, end, silent);
+  let code = 0xE000;
+  while (code <= 0xF8FF && source.includes(String.fromCharCode(code))) code += 1;
+  if (code > 0xF8FF) return tableRule(state, start, end, silent);
+  const marker = String.fromCharCode(code);
+  const replacements = [];
+  for (let line = start; line < end && !state.isEmpty(line); line += 1) {
+    const offset = state.bMarks[line];
+    for (const index of mathPipes(source.slice(offset, state.eMarks[line]))) replacements.push(offset + index);
+  }
+  if (!replacements.length) return tableRule(state, start, end, silent);
+  const parts = [];
+  let cursor = 0;
+  for (const at of replacements) { parts.push(source.slice(cursor, at), marker); cursor = at + 1; }
+  parts.push(source.slice(cursor));
+  const first = state.tokens.length;
+  state.src = parts.join("");
+  try { return tableRule(state, start, end, silent); }
+  finally {
+    state.src = source;
+    for (const token of state.tokens.slice(first)) token.content = token.content.replaceAll(marker, "|");
+  }
+}, { alt: ["paragraph", "reference"] });
 
 md.block.ruler.before("hr", "margin_frontmatter", (state, start, end, silent) => {
   if (start !== 0 || state.src.slice(0, state.eMarks[0]).trim() !== "---") return false;
@@ -188,10 +338,11 @@ function tableCells(range, source) {
   if (source[start] === "|") start += 1;
   if (source[end - 1] === "|" && source[end - 2] !== "\\") end -= 1;
   const cells = [];
+  const protectedPipes = mathPipes(source.slice(start, end));
   let from = start;
   for (let i = start; i <= end; i += 1) {
     if (source[i] === "\\") { i += 1; continue; }
-    if (source[i] === "|" || i === end) {
+    if ((source[i] === "|" && !protectedPipes.has(i - start)) || i === end) {
       let a = from;
       let b = i;
       while (a < b && /\s/.test(source[a])) a += 1;
@@ -277,6 +428,9 @@ function renderTokens(tokens, out, norm, env, inlineMap = null) {
       if (/^<\/a\s*>/i.test(token.content)) inLink = Math.max(0, inLink - 1);
     } else if (type === "html_block") {
       out.add(token.content, absolute(contentMap(token.content, token.meta.lines, norm.text)));
+    } else if (type === "fence" && token.info.trim().toLowerCase() === "math") {
+      const range = absolute([[norm.lines[token.map[0]], norm.lines[token.map[1]] ?? norm.text.length]])[0];
+      out.atom({ tag: "math", latex: token.content.trim(), display: true }, range);
     } else if (["fence", "code_block", "margin_frontmatter"].includes(type)) {
       let ranges = token.meta.lines;
       if (type === "fence" || type === "margin_frontmatter") ranges = ranges.slice(1);
@@ -471,6 +625,7 @@ export function parseMarkdown(source) {
     cursor = group.end;
   }
   if (cursor < source.length) add(cursor, source.length);
+  typesetMath(blocks);
   return blocks;
 }
 

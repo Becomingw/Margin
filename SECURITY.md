@@ -20,6 +20,9 @@ browser serves scripts, fonts and styles locally under a strict CSP.
 Markdown and embedded HTML are parsed locally into an allow-listed element tree;
 scripts, handlers, embeds and arbitrary styles are discarded. Remote images are
 not requested. Local images use the existing source-root-confined asset endpoint.
+Markdown formulas use a document-scoped MathJax context with safe filtering;
+only allow-listed SVG geometry and local typography reach the renderer. TeX
+cannot load external extensions, execute HTML or fetch remote images/fonts.
 
 Only explicit author actions write source. Writes resolve symlinks, stay within
 `sourceRoot`, are serialized and atomic. Interrupted review transactions recover

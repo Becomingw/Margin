@@ -9,7 +9,7 @@ let instance;
 const root = await makeTempDir("margin-desktop-");
 const project = path.join(root, "中文 manuscript");
 await fs.mkdir(project);
-const source = "\uFEFF# Desktop review\r\n\r\nA cautious claim 😀.\r\n";
+const source = "\uFEFF# Desktop review\r\n\r\nA cautious claim 😀.\r\n\r\n| Formula | Check |\r\n| --- | --- |\r\n| $P(A|B)$ | Conditional probability |\r\n\r\nChemistry: $\\ce{H2O}$. Physics: $\\dv{f}{x}$.\r\n";
 const filename = path.join(project, "notes.md");
 const archive = path.join(root, "handoff.marginreview");
 await fs.writeFile(filename, source);
@@ -55,6 +55,10 @@ try {
   await page.locator("#theme").click();
   await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
   await page.waitForFunction(() => document.querySelector("#document").dataset.path === "notes.md");
+  // The packaged backend must include MathJax and its local TeX extensions.
+  assert.equal(await page.locator(".md-math mjx-container").count(), 3);
+  assert.equal(await page.locator(".md-math-error").count(), 0);
+  assert.equal(await page.locator(".markdown-content table tbody td").count(), 2);
   const origin = new URL(page.url()).origin;
   assert.equal((await fetch(`${origin}/api/health`)).status, 403, "private backend requires the main-process token");
   assert.ok(!(await page.content()).includes(root));
@@ -83,6 +87,7 @@ try {
   await page.locator("#import-package").click();
   await page.waitForFunction(() => document.querySelector("#document")?.dataset.path === "manuscript/notes.md");
   assert.equal(await page.locator("#comment-count").textContent(), "1");
+  assert.equal(await page.locator(".md-math mjx-container").count(), 3);
   await page.locator("#document-comment").click();
   await page.locator("#composer-body").fill("Continue after desktop import.");
   await page.locator("#composer-submit").click();
@@ -111,6 +116,7 @@ try {
   await reopened.waitForFunction(() => document.querySelector("#comment-count")?.textContent === "2");
   assert.equal(await reopened.getAttribute("html", "data-theme"), "dark", "native appearance survives restart");
   assert.ok((await reopened.locator("#document").textContent()).includes("careful"));
+  assert.equal(await reopened.locator(".md-math mjx-container").count(), 3);
   // Open a second format directly, including a file hidden from the default list.
   const tex = path.join(project, "appendix.tex");
   await fs.writeFile(tex, "\\section{Desktop appendix}\n\nA reproducible result.\n");

@@ -54,7 +54,7 @@ path resolution or child processes. Report vulnerabilities privately.
 
 Do not split the server or app monolith as a side effect. Reuse existing helpers.
 No framework, bundler or transpiler. Runtime libraries are KaTeX, markdown-it,
-markdown-it-footnote and parse5 (Markdown dependency discussion: issue #3).
+markdown-it-footnote, parse5 (issue #3) and mathjax-full (issue #4).
 Electron, electron-builder and Playwright are development/distribution tools.
 
 ## Commands

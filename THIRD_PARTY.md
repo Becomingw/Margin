@@ -6,7 +6,7 @@ following third-party components. Each stays under its own licence.
 
 ## KaTeX
 
-- Use: renders math in the page, installed
+- Use: renders math in the LaTeX reading view, installed
   by `npm install` into `node_modules/katex` (version range `^0.18.1` in
   `package.json`) and served from there under `/vendor/katex/`. It is not
   copied into this repository.
@@ -16,6 +16,18 @@ following third-party components. Each stays under its own licence.
   (`node_modules/katex/dist/fonts`). The KaTeX project publishes them under the
   SIL Open Font License 1.1 (https://github.com/KaTeX/katex-fonts).
 - Source: https://github.com/KaTeX/KaTeX
+
+## MathJax
+
+- Use: typesets Markdown mathematics locally in the Node backend as restricted SVG.
+  MathJax 3 supports the math family documented by Typora, including AMS, mhchem,
+  physics, macros and equation references. No CDN or dynamic extension downloads.
+- Package: `mathjax-full` 3.2.2. Licence: Apache-2.0; see
+  `node_modules/mathjax-full/LICENSE` and bundled component/font notices.
+- Source: https://github.com/mathjax/MathJax-src
+- The transitive XML parser is constrained to the patched `@xmldom/xmldom` 0.9.12
+  series or newer compatible versions through the package override. Rendering uses
+  MathJax's lightweight adaptor rather than an XML DOM or speech engine.
 
 ## Markdown and HTML parsing
 

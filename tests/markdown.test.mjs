@@ -96,3 +96,69 @@ it("maps autolink labels and nested image alternative text without guessing", ()
   assert.equal(first.raw.slice(first.displayStarts[leaf.from], first.displayEnds[leaf.from]), "h");
   assert.equal(flatten(blocks.flatMap((block) => block.tree)).find((node) => node.tag === "img").attrs.alt, "bold alternative");
 });
+
+it("keeps Chinese table cells and math pipes intact with exact formula source ranges", () => {
+  const source = readFileSync(new URL("./fixtures/markdown/math.md", import.meta.url), "utf8");
+  const blocks = parseMarkdown(source);
+  assert.equal(blocks.map((block) => block.raw).join(""), source);
+  const tables = blocks.filter((block) => block.kind === "table");
+  assert.equal(tables.length, 2);
+  assert.equal(flatten(tables[0].tree).filter((node) => node.tag === "td").length, 12);
+  const formulas = flatten(tables[1].tree).filter((node) => node.tag === "math");
+  assert.deepEqual(formulas.map((node) => node.latex), ["P(A|B)", "|x|", "\\|v\\|"]);
+  for (const block of tables) for (const node of flatten(block.tree).filter((node) => node.tag === "math")) {
+    assert.equal(block.raw.slice(block.displayStarts[node.from], block.displayEnds[node.to - 1]), `$${node.latex}$`);
+    assert.ok(node.svg, "table formulas are typeset locally");
+  }
+});
+
+it("renders Typora-style AMS, chemistry, physics, macros and forward references with MathJax", () => {
+  const source = readFileSync(new URL("./fixtures/markdown/math.md", import.meta.url), "utf8");
+  const nodes = rendered(source).filter((node) => node.tag === "math");
+  assert.equal(nodes.length, 15);
+  assert.equal(nodes.filter((node) => node.error).length, 1);
+  for (const node of nodes.filter((node) => !node.latex.includes("unsupportedCommand"))) assert.ok(node.svg, node.latex);
+  assert.ok(nodes.find((node) => node.latex.includes("unsupportedCommand")).error);
+  const ref = nodes.find((node) => node.latex === "\\eqref{demo}");
+  assert.ok(flatten(ref.svg).some((node) => node.attrs?.["data-c"] === "41"), "forward reference resolves to tag A");
+  assert.ok(rendered("$\\vect{z}$").find((node) => node.tag === "math").error, "macros must not leak between documents");
+  assert.equal(rendered("`$x$`\n\n```tex\n$x$\n```\n").filter((node) => node.tag === "math").length, 0);
+});
+
+it("keeps TeX-generated attributes and errors from enabling external resources or HTML", () => {
+  const nodes = rendered(String.raw`$\href{https://evil.example}{x}$
+
+$\class{document}{x}$
+
+$\color{url(https://evil.example/x)}{x}$
+
+$\text{<img src=x onerror=bad()>}$
+`).filter((node) => node.tag === "math");
+  assert.equal(nodes.length, 4);
+  for (const node of nodes) for (const svg of flatten(node.svg)) {
+    assert.ok(!["script", "image", "foreignObject", "iframe"].includes(svg.tag));
+    for (const [name, value] of Object.entries(svg.attrs || {})) {
+      assert.ok(!name.startsWith("on"));
+      assert.ok(!/url\s*\(/i.test(value));
+      if (name === "href") assert.ok(value.startsWith("#mjx-"));
+    }
+  }
+});
+
+it("preserves CRLF source tiling and mappings for formula-heavy documents and adjacent tables", () => {
+  const fixture = readFileSync(new URL("./fixtures/markdown/math.md", import.meta.url), "utf8");
+  for (const source of ["\uFEFF" + fixture.replace(/\n/g, "\r\n"), "$\\begin{matrix}1&2\\\\3&4\\end{matrix}$", "$$\nx\n\n| A | B |\n| -- | -- |\n| x | y |\n"]) {
+    const blocks = parseMarkdown(source);
+    assert.equal(blocks.map((block) => block.raw).join(""), source);
+    for (const block of blocks) {
+      assert.equal(source.slice(block.start, block.end), block.raw);
+      assert.equal(block.displayStarts.length, block.display.length);
+      assert.equal(block.displayEnds.length, block.display.length);
+      for (let i = 0; i < block.display.length; i += 1) {
+        if (block.displayStarts[i] === null) continue;
+        assert.ok(block.displayStarts[i] >= 0 && block.displayEnds[i] <= block.raw.length);
+        assert.ok(block.displayStarts[i] < block.displayEnds[i]);
+      }
+    }
+  }
+});

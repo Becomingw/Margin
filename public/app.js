@@ -157,10 +157,26 @@ function appendMarkdown(element, block) {
   const marked = (i) => state.view === "current" && block.displayStarts[i] !== null && comments.some((item) => item.anchor.start < block.start + block.displayEnds[i] && item.anchor.end > block.start + block.displayStarts[i]);
   function render(item) {
     if (item.tag === "math") {
-      const atom = node("span", "", "md-leaf md-math");
+      const atom = node("span", "", `md-leaf md-math${item.display ? " md-math-block" : ""}`);
       atom.dataset.mdFrom = item.from; atom.dataset.mdTo = item.to; atom.dataset.mdAtomic = "true";
-      if (window.katex) window.katex.render(item.latex, atom, { throwOnError: false, trust: false, strict: "ignore", displayMode: item.display });
-      else atom.textContent = item.latex;
+      atom.setAttribute("aria-label", item.latex);
+      if (item.svg) {
+        function mathNode(item) {
+          if (item.text !== undefined) return document.createTextNode(item.text);
+          const result = item.tag === "mjx-container" ? node(item.tag) : document.createElementNS("http://www.w3.org/2000/svg", item.tag);
+          for (const [name, value] of Object.entries(item.attrs)) result.setAttribute(name, value);
+          for (const child of item.children) result.append(mathNode(child));
+          return result;
+        }
+        for (const root of item.svg) atom.append(mathNode(root));
+      } else {
+        atom.append(node("code", item.latex));
+        if (item.error) {
+          atom.classList.add("md-math-error");
+          atom.title = `${item.error}；可选中公式修订源码。`;
+          atom.append(node("small", "公式未渲染", "math-error-label"));
+        }
+      }
       if (marked(item.from)) atom.classList.add("marked");
       return atom;
     }
@@ -332,7 +348,12 @@ async function renderDocument() {
     for (const item of state.bootstrap.documents.filter((item) => item.path !== payload.path)) target.append(button(item.label, () => loadDocument(item.path), "document-link"));
   }
 }
+function clearSelectionActions() {
+  state.selection = null;
+  $("#selection-actions").hidden = true;
+}
 function selectText() {
+  clearSelectionActions();
   if (state.view !== "current" || !state.review || $("#composer").open) return;
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || !selection.rangeCount) return;
@@ -340,7 +361,7 @@ function selectText() {
   const contentFor = (container) => (container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement)?.closest(".block-content");
   const first = contentFor(range.startContainer);
   const last = contentFor(range.endContainer);
-  if (!first || !last) return;
+  if (!first || !last || !$("#document").contains(first) || !$("#document").contains(last)) return;
   const offsetAt = (root, container, offset, isEnd) => {
     if (root.dataset.markdown) return markdownOffset(root, container, offset, isEnd);
     const atom = (container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement)?.closest(".math-atom");
@@ -354,6 +375,7 @@ function selectText() {
   };
   const startBlock = state.document.blocks[Number(first.dataset.blockIndex)];
   const endBlock = state.document.blocks[Number(last.dataset.blockIndex)];
+  if (!startBlock || !endBlock) return;
   const startOffset = offsetAt(first, range.startContainer, range.startOffset);
   const endOffset = offsetAt(last, range.endContainer, range.endOffset, true);
   if (startOffset === null || endOffset === null || startBlock.displayStarts[startOffset] === null || endBlock.displayEnds[endOffset - 1] === null) return;
@@ -550,8 +572,8 @@ bind("#export-document", async () => {
 });
 bind("#edit-source", () => openComposer("source"));
 bind("#document-comment", () => openComposer("comment"));
-bind("#selection-comment", () => openComposer("comment", state.selection));
-bind("#selection-replace", () => openComposer("replace", state.selection));
+bind("#selection-comment", () => { if (state.selection) openComposer("comment", state.selection); });
+bind("#selection-replace", () => { if (state.selection) openComposer("replace", state.selection); });
 bind("#reload", () => loadDocument(state.document.path));
 bind("#checkpoint", async () => {
   if (!window.confirm("以当前正文开始新一轮审阅？已有批注和修订历史将完整保留。")) return;
@@ -566,7 +588,19 @@ $("#document-select").addEventListener("change", (event) => loadDocument(event.t
 $("#comment-filter").addEventListener("change", renderReview);
 $("#document").addEventListener("pointerup", () => setTimeout(selectText, 0));
 $("#document").addEventListener("keyup", selectText);
-document.addEventListener("pointerdown", (event) => { if (!event.target.closest("#document, #selection-actions")) $("#selection-actions").hidden = true; });
+document.addEventListener("selectionchange", selectText);
+$("#selection-actions").addEventListener("pointerdown", (event) => {
+  // Keep the document selection alive until a pointer click opens its composer.
+  if (event.button === 0) event.preventDefault();
+});
+document.addEventListener("pointerdown", (event) => { if (!event.target.closest("#selection-actions")) clearSelectionActions(); });
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !$("#composer").open && !$("#selection-actions").hidden) {
+    window.getSelection()?.removeAllRanges();
+    clearSelectionActions();
+  }
+});
+window.addEventListener("blur", clearSelectionActions);
 document.querySelectorAll("[data-view]").forEach((element) => element.addEventListener("click", () => {
   state.view = element.dataset.view;
   state.selection = null;

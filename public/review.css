@@ -98,6 +98,19 @@ mark,.marked { color: inherit; background: var(--comment); border-bottom: 1px so
 .markdown-content .md-footnote { font-size: .85em; border-top: 1px solid var(--line); padding-top: 12px; }
 .markdown-content .md-footnote-label { color: var(--muted); }
 .markdown-content .katex-display { overflow-x: auto; overflow-y: hidden; padding: .3em 0; }
+.md-math-block { display: block; overflow-x: auto; padding: .3em 0; }
+.md-math mjx-container[jax=SVG] { direction: ltr; }
+.md-math mjx-container[jax=SVG] > svg { overflow: visible; min-width: 1px; min-height: 1px; }
+.md-math mjx-container[display=true] { display: block; text-align: center; margin: 1em 0; }
+.md-math mjx-container[width=full] { display: flex; }
+.md-math g[data-mml-node=mtable] > line[data-line], .md-math svg[data-table] > g > line[data-line],
+.md-math g[data-mml-node=mtable] > rect[data-frame], .md-math svg[data-table] > g > rect[data-frame] { stroke-width: 70px; fill: none; }
+.md-math .mjx-dashed { stroke-dasharray: 140; }
+.md-math .mjx-dotted { stroke-linecap: round; stroke-dasharray: 0,140; }
+.md-math g[data-mml-node=mtable] > g > svg { overflow: visible; }
+.md-math path[data-c], .md-math use[data-c] { stroke-width: 3; }
+.md-math-error { border-bottom: 1px dashed var(--muted); }
+.math-error-label { margin-left: .5em; color: var(--muted); font: 11px/1.5 Inter, system-ui, sans-serif; }
 .markdown-content del,.markdown-content s { color: var(--muted); background: transparent; }
 .markdown-content .md-callout { border-left-width: 4px; border-radius: 6px; color: var(--ink); }
 .markdown-content .md-callout-warning,.markdown-content .md-callout-caution { border-left-color: var(--del); }

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-10-12
+
+- Use local MathJax for Markdown formulas, including AMS environments, chemistry,
+  physics, document-scoped macros and equation references. Keep formula source
+  visible with an explanation when a command cannot be rendered.
+- Preserve table cells and exact source spans around math pipes and TeX `\|`;
+  support flexible display delimiters, standalone equation environments and math fences.
+- Hide selection actions immediately when a selection is cleared, collapsed,
+  moved outside the document or dismissed with Escape; show them on reselection.
 - Build and smoke-test Intel macOS packages on native Intel runners rather than
   relying on cross-architecture application startup on Apple Silicon runners.
 - Wait for document reload completion between browser smoke-test edits to avoid
