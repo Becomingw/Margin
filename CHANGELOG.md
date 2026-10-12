@@ -4,6 +4,8 @@
 
 - Build and smoke-test Intel macOS packages on native Intel runners rather than
   relying on cross-architecture application startup on Apple Silicon runners.
+- Wait for document reload completion between browser smoke-test edits to avoid
+  stale save notifications racing with DOM replacement on slower runners.
 
 ## [0.2.0] — 2026-10-12
 

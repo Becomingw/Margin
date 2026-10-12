@@ -63,6 +63,9 @@ try {
   async function submit() {
     await page.locator("#composer-submit").click();
     await page.waitForFunction(() => !document.querySelector("#composer").open);
+    // The previous save's toast may still be visible while the next document
+    // load replaces the DOM. Wait for this submission's final UI state first.
+    await page.waitForFunction(() => !document.querySelector("#composer-submit").disabled);
     await page.waitForFunction(() => document.querySelector("#toast").textContent.includes("已保存"));
   }
   for (const [selector, text, raw, next] of [
