@@ -1,11 +1,20 @@
 import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { after, it } from "node:test";
 import { appRoot, apiOk, cleanupAll, makeProject, makeTempDir, startServer } from "./helpers.mjs";
 import { createWorkspace, desktopEnvironment, findProject, prepareProject, rememberProject, restoreWorkspace } from "../desktop/workspaces.mjs";
 import { childEnvironment, redactSecrets } from "../agent-providers.mjs";
 after(cleanupAll);
+
+it("macOS packaging can parse application property lists with its installed dependencies", () => {
+  const require = createRequire(import.meta.url);
+  const builderRequire = createRequire(require.resolve("app-builder-lib"));
+  const plist = builderRequire("plist");
+  const metadata = { CFBundleName: "Margin", CFBundleShortVersionString: "0.2.1" };
+  assert.deepEqual(plist.parse(plist.build(metadata)), metadata);
+});
 
 it("desktop tokens are redacted and never inherited by project children", () => {
   const previous = process.env.MARGIN_DESKTOP_TOKEN;

@@ -25,8 +25,9 @@ following third-party components. Each stays under its own licence.
 - Package: `mathjax-full` 3.2.2. Licence: Apache-2.0; see
   `node_modules/mathjax-full/LICENSE` and bundled component/font notices.
 - Source: https://github.com/mathjax/MathJax-src
-- The transitive XML parser is constrained to the patched `@xmldom/xmldom` 0.9.12
-  series or newer compatible versions through the package override. Rendering uses
+- MathJax's transitive XML parser is constrained to the patched `@xmldom/xmldom`
+  0.9.12 series or newer compatible versions through a `speech-rule-engine`-scoped
+  override, preserving the macOS packager's separate compatible parser. Rendering uses
   MathJax's lightweight adaptor rather than an XML DOM or speech engine.
 
 ## Markdown and HTML parsing

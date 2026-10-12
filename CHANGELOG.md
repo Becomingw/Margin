@@ -15,6 +15,8 @@
   relying on cross-architecture application startup on Apple Silicon runners.
 - Wait for document reload completion between browser smoke-test edits to avoid
   stale save notifications racing with DOM replacement on slower runners.
+- Scope the MathJax XML dependency override to its dependency tree so macOS
+  packaging retains its compatible property-list parser; add a packaging regression.
 
 ## [0.2.0] — 2026-10-12
 
