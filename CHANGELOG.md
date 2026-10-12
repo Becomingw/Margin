@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Refocus the bilingual README on review features and everyday workflows, simplify
+  setup guidance and add acknowledgments to Paper Pal and its contributors.
+
 ## [0.1.0] — 2026-10-12
 
 ### Independent identity
