@@ -151,6 +151,8 @@ try {
   await page.locator(".rich-content td").first().click();
   await page.keyboard.insertText("Column");
   await page.getByRole("button", { name: "添加行", exact: true }).click();
+  // Plate commits the new row asynchronously; locator.count() does not retry.
+  await page.waitForFunction(() => document.querySelectorAll(".rich-content tr").length === 3);
   assert.equal(await page.locator(".rich-content tr").count(), 3);
   await page.locator("#save-rich").click();
   await page.waitForSelector("#rich-document", { state: "hidden" });
