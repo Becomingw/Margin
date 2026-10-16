@@ -4,6 +4,8 @@
 
 ## [0.3.0] — 2026-10-17
 
+- Synchronize toolbar commands with the visible selection and focus newly inserted
+  tables, including on slower renderers; verify editor behavior with CPU throttling.
 - Add a scoped React / Plate / Slate Markdown editor (issue #6) with direct text
   editing, formatting, links, tables, undo/redo and explicit revision saves.
   Retain exact untouched source, mapped text edits, BOM/line endings and protected

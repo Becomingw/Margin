@@ -46,6 +46,10 @@ smoke, 156 passing cases, 5 existing platform/legacy skips and no failures.
 The browser tests caught and fixed initialization entering undo history, deferred
 Slate selection handling, incorrect decoration/element attribute contracts and an
 invisible character inserted by default Markdown empty-paragraph serialization.
+Release CI additionally exposed new-table focus returning to the preceding paragraph.
+This was reproduced with `MARGIN_EDITOR_CPU_RATE=6` in the Chromium smoke test;
+table insertion now selects its first cell and toolbar commands synchronize the
+visible selection before applying transforms. The throttled regression passes.
 
 Screenshots: `docs/images/plate-editor-{light,dark,mobile}.png` and
 `docs/images/desktop-plate-editor.png`. Fixtures are fictional; no manuscript or

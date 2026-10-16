@@ -14,6 +14,10 @@ try {
   const server = await startServer(project.root, { env: { MARGIN_MCP_TOKEN: token } });
   browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  if (process.env.MARGIN_EDITOR_CPU_RATE) {
+    const session = await page.context().newCDPSession(page);
+    await session.send("Emulation.setCPUThrottlingRate", { rate: Number(process.env.MARGIN_EDITOR_CPU_RATE) });
+  }
   const errors = [];
   const external = [];
   page.on("pageerror", (error) => { errors.push(error.message); console.error(error.message); });
@@ -126,9 +130,11 @@ try {
   await page.locator("#edit-rich").click();
   const plain = page.locator(".rich-content > p").filter({ hasText: "Plain" });
   await plain.click();
-  await page.keyboard.press(lineStart);
-  for (let i = 0; i < 5; i += 1) await page.keyboard.press("Shift+ArrowRight");
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await plain.evaluate((element) => {
+    const text = element.querySelector("[data-slate-string]").firstChild;
+    window.getSelection().setBaseAndExtent(text, 0, text, 5);
+  });
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), "Plain");
   page.once("dialog", (dialog) => dialog.accept("https://example.invalid"));
   await page.getByRole("button", { name: "链接", exact: true }).click();
   assert.equal(await page.locator('.rich-content a[href="https://example.invalid"]').innerText(), "Plain");
@@ -150,6 +156,7 @@ try {
   await page.waitForSelector(".rich-content table");
   await page.locator(".rich-content td").first().click();
   await page.keyboard.insertText("Column");
+  assert.equal(await page.evaluate(() => Boolean(window.getSelection().anchorNode?.parentElement.closest("td"))), true, "typing into a newly inserted table keeps the caret in its cell");
   await page.getByRole("button", { name: "添加行", exact: true }).click();
   // Plate commits the new row asynchronously; locator.count() does not retry.
   await page.waitForFunction(() => document.querySelectorAll(".rich-content tr").length === 3);

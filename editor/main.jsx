@@ -62,7 +62,15 @@ export function mountEditor(host, document, callbacks) {
     try { callbacks.change(draft() !== document.source); }
     catch (error) { callbacks.change(true, error.message); }
   };
-  const action = (label, fn) => <button type="button" key={label} onMouseDown={(event) => event.preventDefault()} onClick={() => { fn(); editor.tf.focus(); }}>{label}</button>;
+  const syncSelection = () => {
+    // Slate defers DOM selection changes. Toolbar commands must use the visible
+    // selection, especially immediately after typing or moving between cells.
+    const selection = editor.api.toSlateRange(window.getSelection(), { exactMatch: false, suppressThrow: true });
+    if (selection) editor.tf.select(selection);
+  };
+  const action = (label, fn) => <button type="button" key={label}
+    onMouseDown={(event) => { event.preventDefault(); syncSelection(); }}
+    onClick={() => { syncSelection(); fn(); editor.tf.focus(); }}>{label}</button>;
   const root = createRoot(host);
   root.render(<Plate editor={editor} onValueChange={changed}>
     <div className="rich-formatting" role="toolbar" aria-label="正文格式">
@@ -73,7 +81,7 @@ export function mountEditor(host, document, callbacks) {
       {action("段落", () => { editor.tf.setNodes({ type: "p" }, { match: textBlock }); editor.tf.unsetNodes(["listStyleType", "indent"], { match: textBlock }); })}
       {action("标题", () => editor.tf.setNodes({ type: "h2" }, { match: textBlock }))}
       {action("列表", () => editor.tf.setNodes({ listStyleType: "disc", indent: 1 }, { match: (node) => ["p", "h1", "h2", "h3"].includes(node.type) }))}
-      {action("表格", () => editor.getTransforms(TablePlugin).insert.table({ rowCount: 2, colCount: 2 }))}
+      {action("表格", () => editor.getTransforms(TablePlugin).insert.table({ rowCount: 2, colCount: 2 }, { select: true }))}
       {action("添加行", () => editor.getTransforms(TablePlugin).insert.tableRow())}
       {action("链接", () => {
         if (!editor.selection) return;
