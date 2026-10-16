@@ -41,6 +41,8 @@ jobs:
       - run: npm test
       - run: npx playwright install chromium
       - run: npm run test:markdown
+      - run: npm run test:review-ui
+      - run: npm run test:editor
       - run: npm run test:desktop
       - run: npm run desktop:dist -- ${{ matrix.target }}
         env:

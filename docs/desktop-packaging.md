@@ -1,13 +1,14 @@
 # Margin desktop development
 
 Download builds from [GitHub Releases](https://github.com/Becomingw/Margin/releases).
-v0.2.1 provides macOS Apple Silicon / Intel and Windows x64 installers. They are
+v0.3.0 provides macOS Apple Silicon / Intel and Windows x64 installers. They are
 unsigned; macOS builds are not notarized. Use `npm run desktop` for development.
 
 The desktop packaging request authorizes an optional Electron distribution layer.
 Electron and electron-builder are development/packaging dependencies only; the web
-server uses KaTeX, MathJax, markdown-it, markdown-it-footnote and parse5, with no bundler
-and no compilation step.
+server uses KaTeX, MathJax, markdown-it, markdown-it-footnote and parse5. The Markdown
+editor has a local esbuild step (issue #6). `npm ci` generates the
+Plate/React browser bundle and its license manifest before desktop development.
 The existing web/CLI commands remain usable without Electron.
 
 The desktop main process owns native file dialogs, recent projects, local export
@@ -26,6 +27,11 @@ are never overwritten by opening a file. Closing or switching a dirty editor ask
 whether to discard; closing the app stops its private backend.
 
 Development: `npm ci`, then `npm run desktop`.
+Electron downloads its development binary on first use. On machines whose network
+requires the configured HTTP(S) proxy, enable the downloader's proxy support before
+starting (PowerShell: `$env:ELECTRON_GET_USE_PROXY = "1"`). This is a local download
+setting, not manuscript configuration. Then run `npm run test:desktop` for the real
+window, native-dialog, MCP, save/restore and restart checks.
 Unpacked build: `npm run desktop:pack`.
 Installers: `npm run desktop:dist -- --mac --arm64`, `--mac --x64`, or `--win --x64`.
 Use each platform's native build runner; the workflow builds both platforms.

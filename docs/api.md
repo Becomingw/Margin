@@ -1,5 +1,28 @@
 # Local HTTP API
 
+## External-agent MCP
+
+`POST /mcp` is an opt-in stateless Streamable HTTP MCP endpoint. It requires
+`Authorization: Bearer <MARGIN_MCP_TOKEN>` plus the Host, Origin/`X-Margin: 1`
+and JSON checks below. The desktop-scoped token is also sent as
+`X-Margin-Desktop-Token`; that credential is accepted only at `/mcp`.
+Initialization, ping, tool discovery and seven review tools are supported.
+Notifications return 202, GET/DELETE return 405. See [MCP](mcp.md) for schemas,
+client setup, paging and author-confirmed modification workflow.
+
+`POST /api/review/suggestion-resolve` is an author-only action with
+`{ id, action: "accept" | "reject", expectedUpdatedAt, etag }`. Acceptance requires
+both the supplied etag and the suggestion's original hash to match current source.
+It commits source, linked revision, comment status and history atomically. Rejection
+does not require `etag` and does not write source. Both return the refreshed review.
+Missing suggestions return 404; stale/already resolved proposals return 409.
+The normal `GET /api/review` response includes optional comment `actor` and
+`suggestion: { text, etag, status, appliedRevision? }` fields; replies/events also
+carry source attribution. `GET /api/bootstrap` reports `mcp.enabled` and a relative
+endpoint, never the credential.
+
+## Author API
+
 Base URL: `http://127.0.0.1:4317`, or the printed port. Internal API, unstable
 before 1.0. The server is loopback-only by default and has no authentication.
 

@@ -1,6 +1,61 @@
+import { commentRanges, intersects } from "./review-ranges.js";
+
 const $ = (selector) => document.querySelector(selector);
 const desktop = window.marginDesktop;
-const state = { bootstrap: null, document: null, review: null, view: "current", tab: "comments", selection: null, composer: null, loading: 0, busy: false };
+let rich = null;
+let richDirty = false;
+let richStarting = false;
+function updateRichControls() {
+  $("#edit-rich").hidden = Boolean(rich) || !/\.md$/i.test(state.document?.path || "") || state.document?.readOnly || state.view !== "current";
+  $("#save-rich").hidden = $("#close-rich").hidden = $("#rich-status").hidden = !rich;
+  $("#save-rich").disabled = !richDirty || state.busy;
+  $("#rich-status").textContent = richDirty ? "未保存 · 先保存再批注" : "Plate / Slate · 已保存";
+  $("#rich-document").hidden = !rich || state.view !== "current";
+  $("#document").hidden = Boolean(rich) && state.view === "current";
+}
+function closeRich() {
+  rich?.destroy(); rich = null; richDirty = false;
+  $("#rich-document").replaceChildren();
+  updateRichControls();
+}
+function requireSavedDraft() {
+  if (richDirty || state.busy) { toast("请先保存正文草稿，或结束编辑并放弃修改。"); return false; }
+  return true;
+}
+async function startRich() {
+  if (rich || richStarting || state.pending || state.busy || !requireSavedDraft() || $("#composer").open) return;
+  richStarting = true;
+  const payload = state.document;
+  try {
+    const { mountEditor } = await import("./editor/editor.js");
+    if (payload !== state.document || state.view !== "current") return;
+    const fallbacks = new Map(payload.blocks.map((block) => [block.index, document.querySelector(`#block-${block.index} .block-content`)?.cloneNode(true)]));
+    rich = mountEditor($("#rich-document"), payload, {
+      ranges: state.ranges,
+      fallback: (block) => fallbacks.get(block.index)?.cloneNode(true) || node("pre", block.raw),
+      editSource: (block) => { if (requireSavedDraft() && block) openComposer("replace", { start: block.start, end: block.end, quote: block.raw }); },
+      change: (dirty, error) => { richDirty = dirty; updateRichControls(); if (error) $("#rich-status").textContent = error; },
+      message: toast,
+      save: () => saveRich().catch((error) => toast(error.message)),
+    });
+    updateRichControls();
+  } finally { richStarting = false; }
+}
+async function saveRich() {
+  if (!rich || !richDirty || state.busy || state.pending) return;
+  const text = rich.source();
+  const path = state.document.path;
+  const generation = state.loading;
+  state.busy = true;
+  $("#rich-document").inert = true;
+  updateRichControls();
+  try {
+    await api("/api/review/save", { path, etag: state.document.etag, text, reason: "正文富文本编辑" });
+    closeRich();
+    await refreshAfterWrite(path, generation, "已保存正文，审阅历史已记录。");
+  } finally { state.busy = false; $("#rich-document").inert = false; updateRichControls(); }
+}
+const state = { bootstrap: null, document: null, review: null, view: "current", tab: "comments", selection: null, composer: null, loading: 0, rendering: 0, pending: false, busy: false, ranges: [], activeComment: null };
 const labels = { "document-opened": "打开文档", edit: "修订正文", restore: "恢复版本", "external-change": "外部修改", "comment-created": "添加批注", "comment-reply": "回复批注", "comment-edit": "编辑批注", "comment-resolve": "解决批注", "comment-reopen": "重新打开批注", "comment-delete": "删除批注", "comment-restore": "恢复批注", checkpoint: "开始新一轮", "package-imported": "导入审阅包" };
 const statuses = { open: "未解决", resolved: "已解决", deleted: "已删除", attached: "已定位", modified: "原文已修改", unlocated: "待重新定位" };
 const latest = () => state.review?.document.revisions.at(-1);
@@ -49,34 +104,70 @@ async function refreshBootstrap() {
   if (selected) $("#document-select").value = selected;
 }
 async function loadDocument(path) {
+  if (state.busy && rich) return;
+  if (richDirty && !window.confirm("正文草稿尚未保存。放弃草稿并载入文档？")) { $("#document-select").value = state.document.path; return; }
+  if (rich) closeRich();
   const generation = ++state.loading;
-  const payload = await api(`/api/document?path=${encodeURIComponent(path)}`);
-  const review = payload.readOnly ? null : await api(`/api/review?path=${encodeURIComponent(path)}`);
-  if (generation !== state.loading) return;
-  if (review && review.document.revisions.at(-1).hash !== payload.etag) throw new Error("读取期间文件发生变化，请重新载入。");
-  state.document = payload;
-  state.review = review;
-  if (!state.bootstrap.documents.some((item) => item.path === path)) {
-    state.bootstrap.documents.push({ path, label: path });
-    const option = node("option", path);
-    option.value = path;
-    $("#document-select").append(option);
+  state.pending = true;
+  clearSelectionActions();
+  $("#document").setAttribute("aria-busy", "true");
+  try {
+    const payload = await api(`/api/document?path=${encodeURIComponent(path)}`);
+    const review = payload.readOnly ? null : await api(`/api/review?path=${encodeURIComponent(path)}`);
+    if (generation !== state.loading) return;
+    if (review && review.document.revisions.at(-1).hash !== payload.etag) throw new Error("读取期间文件发生变化，请重新载入。");
+    state.document = payload;
+    state.review = review;
+    state.ranges = commentRanges(review?.comments || []);
+    if (state.activeComment && !review?.comments.some((item) => item.id === state.activeComment)) state.activeComment = null;
+    if (!state.bootstrap.documents.some((item) => item.path === path)) {
+      state.bootstrap.documents.push({ path, label: path });
+      const option = node("option", path);
+      option.value = path;
+      $("#document-select").append(option);
+    }
+    state.selection = null;
+    $("#selection-actions").hidden = true;
+    $("#document-select").value = path;
+    $("#document-title").textContent = path.split("/").at(-1);
+    $("#document-info").textContent = `${/\.md$/i.test(path) ? "Markdown" : "LaTeX"} · ${payload.source.length.toLocaleString()} 字符${review ? ` · ${review.document.revisions.length} 个版本` : ""}`;
+    $("#encoding-notice").hidden = !payload.readOnly;
+    $("#encoding-notice").textContent = payload.encoding?.message || "";
+    $("#external-notice").hidden = true;
+    for (const selector of ["#edit-source", "#document-comment", "#checkpoint"]) $(selector).disabled = payload.readOnly;
+    $("#document-total").textContent = state.bootstrap.documents.length;
+    try { sessionStorage.setItem("margin.review.document", path); } catch { /* optional storage */ }
+    await renderDocument();
+    if (generation !== state.loading) return;
+    renderReview();
+    $("#document").dataset.path = path;
+  } catch (error) {
+    if (generation !== state.loading) return;
+    $("#document-select").value = state.document?.path || path;
+    throw error;
+  } finally {
+    if (generation === state.loading) {
+      state.pending = false;
+      $("#document").setAttribute("aria-busy", "false");
+    }
   }
-  state.selection = null;
-  $("#selection-actions").hidden = true;
-  $("#document-select").value = path;
-  $("#document-title").textContent = path.split("/").at(-1);
-  $("#document-info").textContent = `${/\.md$/i.test(path) ? "Markdown" : "LaTeX"} · ${payload.source.length.toLocaleString()} 字符${review ? ` · ${review.document.revisions.length} 个版本` : ""}`;
-  $("#encoding-notice").hidden = !payload.readOnly;
-  $("#encoding-notice").textContent = payload.encoding?.message || "";
-  $("#external-notice").hidden = true;
-  for (const selector of ["#edit-source", "#document-comment", "#checkpoint"]) $(selector).disabled = payload.readOnly;
-  $("#document-total").textContent = state.bootstrap.documents.length;
-  try { sessionStorage.setItem("margin.review.document", path); } catch { /* optional storage */ }
-  await renderDocument();
-  if (generation !== state.loading) return;
-  renderReview();
-  $("#document").dataset.path = path;
+}
+
+async function refreshAfterWrite(path, generation, message, commentId = null) {
+  if (richDirty) { $("#external-notice").hidden = false; toast(message); return; }
+  // A completed write belongs to its original document, not the next selection.
+  if (path === state.document?.path && generation === state.loading) {
+    if (rich) closeRich();
+    if (commentId) state.activeComment = commentId;
+    try { await loadDocument(path); }
+    catch (error) {
+      $("#external-notice").hidden = false;
+      toast(`${message} 但刷新失败，请重新载入，无需重复提交。${error.message}`);
+      return;
+    }
+    if (commentId) document.getElementById(commentId)?.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" });
+  }
+  toast(message);
 }
 
 function diffOperations(before, after) {
@@ -115,9 +206,8 @@ function appendDiff(container, before, after) {
   for (const part of diffOperations(before, after)) container.append(node(part.kind === "delete" ? "del" : part.kind === "insert" ? "ins" : "span", part.text));
 }
 function appendMappedText(element, block) {
-  const comments = (state.review?.comments || []).filter((item) => item.status === "open" && ["attached", "modified"].includes(item.anchor.status));
   const display = block.display || "";
-  const markedAt = (i) => comments.some((item) => item.anchor.start < block.start + (block.displayEnds?.[i] ?? 0) && item.anchor.end > block.start + (block.displayStarts?.[i] ?? 0));
+  const markedAt = (i) => intersects(state.ranges, block.start + (block.displayStarts?.[i] ?? 0), block.start + (block.displayEnds?.[i] ?? 0));
   const math = (block.annotations || []).filter((item) => item.type === "math");
   const signature = (i) => `${state.view === "current" && markedAt(i) ? "marked" : ""} ${(block.styles || []).filter((style) => style.start <= i && style.end > i).map((style) => `style-${style.type}`).join(" ")}`;
   for (let i = 0; i < display.length;) {
@@ -153,8 +243,7 @@ function markdownTarget(value) {
 }
 
 function appendMarkdown(element, block) {
-  const comments = (state.review?.comments || []).filter((item) => item.status === "open" && ["attached", "modified"].includes(item.anchor.status));
-  const marked = (i) => state.view === "current" && block.displayStarts[i] !== null && comments.some((item) => item.anchor.start < block.start + block.displayEnds[i] && item.anchor.end > block.start + block.displayStarts[i]);
+  const marked = (i) => state.view === "current" && block.displayStarts[i] !== null && intersects(state.ranges, block.start + block.displayStarts[i], block.start + block.displayEnds[i]);
   function render(item) {
     if (item.tag === "math") {
       const atom = node("span", "", `md-leaf md-math${item.display ? " md-math-block" : ""}`);
@@ -242,7 +331,7 @@ function appendMarkdown(element, block) {
       });
     }
     if (/^h[1-6]$/.test(item.tag)) {
-      const link = button(result.textContent, () => result.scrollIntoView({ behavior: "smooth", block: "start" }));
+      const link = button(result.textContent, () => (rich && state.view === "current" ? $("#rich-document").querySelector(`[data-margin-origin="${block.index}"]`) : result)?.scrollIntoView({ behavior: scrollBehavior(), block: "start" }));
       link.style.paddingLeft = `${12 + (Number(item.tag[1]) - 1) * 12}px`;
       $("#outline").append(link);
     }
@@ -274,12 +363,15 @@ function markdownOffset(root, container, offset, isEnd) {
 }
 
 async function renderDocument() {
+  updateRichControls();
+  const rendering = ++state.rendering;
   const payload = state.document;
   if (!payload) return;
   const generation = state.loading;
   const view = state.view;
   const target = $("#document");
   if (view === "changes" && state.review) {
+    $("#outline").replaceChildren();
     target.replaceChildren(node("p", "本轮原稿 → 当前正文 · 源码修订（删除线为删除，下划线为新增）", "hint"));
     const diff = node("pre", "", "source-diff");
     appendDiff(diff, baseline().source, payload.source);
@@ -287,7 +379,7 @@ async function renderDocument() {
     return;
   }
   const visible = view === "original" && state.review ? await api(`/api/review/render?path=${encodeURIComponent(payload.path)}&revision=${encodeURIComponent(baseline().id)}`) : payload;
-  if (generation !== state.loading || view !== state.view) return;
+  if (generation !== state.loading || view !== state.view || payload !== state.document || rendering !== state.rendering) return;
   target.replaceChildren();
   $("#outline").replaceChildren();
   if (visible.frontMatter?.title) target.append(node("h1", visible.frontMatter.title.display || visible.frontMatter.title.text || visible.frontMatter.title));
@@ -354,10 +446,20 @@ function clearSelectionActions() {
 }
 function selectText() {
   clearSelectionActions();
-  if (state.view !== "current" || !state.review || $("#composer").open) return;
+  if (state.pending || state.view !== "current" || !state.review || $("#composer").open) return;
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || !selection.rangeCount) return;
   const range = selection.getRangeAt(0);
+  if (rich && $("#rich-document").contains(range.commonAncestorContainer)) {
+    state.selection = rich.selection();
+    if (state.selection) {
+      const bounds = range.getBoundingClientRect();
+      $("#selection-actions").hidden = false;
+      $("#selection-actions").style.left = `${Math.max(8, Math.min(window.innerWidth - 250, bounds.left))}px`;
+      $("#selection-actions").style.top = `${Math.max(8, Math.min(window.innerHeight - 50, bounds.bottom + 8))}px`;
+    }
+    return;
+  }
   const contentFor = (container) => (container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement)?.closest(".block-content");
   const first = contentFor(range.startContainer);
   const last = contentFor(range.endContainer);
@@ -389,7 +491,8 @@ function selectText() {
   $("#selection-actions").style.top = `${Math.max(8, Math.min(window.innerHeight - 50, bounds.bottom + 8))}px`;
 }
 function openComposer(mode, selection = null, comment = null) {
-  if (!state.review) return;
+  if (!requireSavedDraft()) return;
+  if (!state.review || state.pending) return;
   state.composer = { mode, selection, comment, path: state.document.path, etag: state.document.etag };
   const edit = ["replace", "delete", "source"].includes(mode);
   const title = { comment: "添加批注", reply: "回复批注", "edit-comment": "编辑批注", replace: "修订选区（源码）", delete: "删除选区", source: "编辑完整源码" }[mode];
@@ -419,6 +522,8 @@ async function submitComposer(event) {
   state.busy = true;
   $("#composer-submit").disabled = true;
   const draft = state.composer;
+  const generation = state.loading;
+  let commentId = draft.comment?.id;
   let text = $("#composer-body").value;
   const originalText = draft.mode === "source" ? state.document.source : draft.selection?.quote;
   if (["replace", "delete", "source"].includes(draft.mode) && originalText) {
@@ -445,46 +550,93 @@ async function submitComposer(event) {
     } else {
       const anchor = draft.selection || { start: 0, end: 0 };
       const heading = state.document.blocks.filter((block) => block.kind === "heading" && block.start <= anchor.start).at(-1)?.display.trim() || "全文";
-      await api("/api/review/comment", { path: draft.path, etag: draft.etag, start: anchor.start, end: anchor.end, body: text, heading });
+      const saved = await api("/api/review/comment", { path: draft.path, etag: draft.etag, start: anchor.start, end: anchor.end, body: text, heading });
+      commentId = saved.id;
     }
     $("#composer").close();
     state.composer = null;
-    await loadDocument(draft.path);
-    toast("已保存，审阅历史已记录。");
+    await refreshAfterWrite(draft.path, generation, "已保存，审阅历史已记录。", commentId);
   } catch (error) { $("#composer-error").textContent = error.message; }
   finally { state.busy = false; $("#composer-submit").disabled = false; }
 }
 async function updateComment(comment, action) {
+  if (state.pending) return;
+  const path = state.document.path;
+  const generation = state.loading;
   await api("/api/review/comment-update", { id: comment.id, action, expectedUpdatedAt: comment.updatedAt || comment.createdAt });
-  await loadDocument(state.document.path);
+  await refreshAfterWrite(path, generation, "批注已更新。", comment.id);
 }
-function focusComment(comment) {
+const scrollBehavior = () => matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth";
+async function focusComment(comment) {
+  if (state.pending) return;
+  state.activeComment = comment.id;
+  if (state.view !== "current") {
+    state.view = "current";
+    document.querySelectorAll("[data-view]").forEach((item) => item.setAttribute("aria-pressed", String(item.dataset.view === "current")));
+    await renderDocument();
+  }
+  document.querySelectorAll(".review-card").forEach((item) => item.classList.toggle("active", item.id === comment.id));
+  const comments = visibleComments();
+  $("#comment-position").textContent = `${Math.max(0, comments.findIndex((item) => item.id === comment.id) + 1)} / ${comments.length}`;
   if (!["attached", "modified"].includes(comment.anchor.status)) { toast("原始位置已变化，请在修订记录中查看原文。"); return; }
   const block = state.document.blocks.find((item) => item.end > comment.anchor.start && item.start <= comment.anchor.start);
   if (block) {
-    const element = $(`#block-${block.index}`);
-    element?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const element = rich ? $("#rich-document").querySelector(`[data-margin-origin="${block.index}"]`) : $(`#block-${block.index}`);
+      element?.scrollIntoView({ behavior: scrollBehavior(), block: "center" });
     element?.classList.add("focused");
     setTimeout(() => element?.classList.remove("focused"), 1800);
   }
+}
+function visibleComments() {
+  const filter = $("#comment-filter").value;
+  const query = $("#comment-search").value.trim().toLocaleLowerCase();
+  return (state.review?.comments || []).filter((item) => (filter === "all" || item.status === filter) && (!query || [item.body, item.original.quote, ...item.replies.map((reply) => reply.body)].join("\n").toLocaleLowerCase().includes(query)));
+}
+async function resolveSuggestion(comment, action) {
+  if (!requireSavedDraft()) return;
+  if (state.pending) return;
+  if (!window.confirm(action === "accept" ? "将这条建议作为一条新修订写入正文？原稿与历史仍会保留。" : "拒绝这条建议？讨论与历史仍会保留。")) return;
+  const path = state.document.path;
+  const generation = state.loading;
+  await api("/api/review/suggestion-resolve", { id: comment.id, action, etag: state.document.etag, expectedUpdatedAt: comment.updatedAt || comment.createdAt });
+  await refreshAfterWrite(path, generation, action === "accept" ? "已应用建议，可在修订记录中恢复。" : "已拒绝建议，正文未修改。");
 }
 function renderReview() {
   const container = $("#review-list");
   container.replaceChildren();
   $("#comment-filter-label").hidden = state.tab !== "comments";
+  $("#comment-navigation").hidden = state.tab !== "comments";
   $("#comment-count").textContent = state.review?.comments.filter((item) => item.status === "open").length || 0;
   if (!state.review) { container.append(node("p", "此文件只读。", "empty")); return; }
   if (state.tab === "comments") {
-    const filter = $("#comment-filter").value;
-    for (const comment of state.review.comments.filter((item) => filter === "all" || item.status === filter)) {
+    const comments = visibleComments();
+    $("#comment-position").textContent = `${Math.max(0, comments.findIndex((item) => item.id === state.activeComment) + 1)} / ${comments.length}`;
+    $("#previous-comment").disabled = $("#next-comment").disabled = !comments.length;
+    for (const comment of comments) {
       const card = node("article", "", "review-card");
       card.id = comment.id;
-      card.append(node("div", `${statuses[comment.status]} · ${comment.anchor.status === "deleted" ? "原文已删除" : statuses[comment.anchor.status]}`, "card-meta"));
+      card.classList.toggle("active", comment.id === state.activeComment);
+      card.append(node("div", `${comment.actor === "agent" ? "AI · " : "人工 · "}${statuses[comment.status]} · ${comment.anchor.status === "deleted" ? "原文已删除" : statuses[comment.anchor.status]}`, "card-meta"));
       const identifier = node("small", comment.id, "identifier");
-      card.append(button(comment.original.heading || "全文", () => focusComment(comment), "text-button"));
+      card.append(button(comment.original.heading || (comment.original.end > comment.original.start ? "定位原文" : "全文"), () => focusComment(comment), "text-button"));
       if (comment.original.quote) card.append(node("blockquote", comment.original.quote));
       card.append(node("p", comment.body, "comment-body"));
-      for (const reply of comment.replies) card.append(node("p", reply.body, "reply"));
+      for (const reply of comment.replies) card.append(node("p", `${reply.actor === "agent" ? "AI" : "人工"} · ${reply.body}`, "reply"));
+      if (comment.suggestion) {
+        const suggestion = comment.suggestion;
+        card.append(node("strong", `修改建议 · ${{ pending: "待确认", accepted: "已采纳", rejected: "已拒绝" }[suggestion.status]}`, "suggestion-title"));
+        const diff = node("div", "", "change-diff suggestion-diff");
+        appendDiff(diff, comment.original.quote, suggestion.text);
+        card.append(diff);
+        if (suggestion.status === "pending" && comment.status !== "deleted") {
+          const actions = node("div", "", "card-actions");
+          const accept = button("采纳建议", () => resolveSuggestion(comment, "accept"), "primary");
+          accept.disabled = suggestion.etag !== state.document.etag;
+          if (accept.disabled) card.append(node("p", "正文已变化，请让 Agent 基于当前版本重新提出建议。", "hint"));
+          actions.append(accept, button("拒绝", () => resolveSuggestion(comment, "reject")));
+          card.append(actions);
+        }
+      }
       const actions = node("div", "", "card-actions");
       if (comment.status === "deleted") actions.append(button("恢复批注", () => updateComment(comment, "restore")));
       else actions.append(button("回复", () => openComposer("reply", null, comment)), button("编辑", () => openComposer("edit-comment", null, comment)), button(comment.status === "open" ? "解决" : "重新打开", () => updateComment(comment, comment.status === "open" ? "resolve" : "reopen")), button("删除", () => updateComment(comment, "delete")));
@@ -497,7 +649,7 @@ function renderReview() {
   } else {
     for (const record of [...state.review.events].reverse().filter((item) => state.tab === "history" || item.resultRevision)) {
       const card = node("article", "", "review-card");
-      card.append(node("strong", labels[record.type] || record.type), node("small", new Date(record.createdAt).toLocaleString(), "card-meta"), node("small", record.id, "identifier"));
+      card.append(node("strong", labels[record.type] || record.type), node("small", `${record.actor === "agent" ? "AI" : "人工"} · ${new Date(record.createdAt).toLocaleString()}`, "card-meta"), node("small", record.id, "identifier"));
       if (record.resultRevision) {
         const diff = node("div", "", "change-diff");
         appendDiff(diff, record.before, record.after);
@@ -508,9 +660,13 @@ function renderReview() {
           if (comment) card.append(node("p", `关联批注：${comment.body}`, "reply"));
         }
         card.append(button("恢复到此次修改前", async () => {
+          if (!requireSavedDraft()) return;
+          if (state.pending) return;
           if (!window.confirm("将以一条新的修订恢复该历史版本，后续历史仍会保留。继续？")) return;
-          await api("/api/review/restore", { path: state.document.path, etag: state.document.etag, revisionId: record.baseRevision });
-          await loadDocument(state.document.path);
+          const path = state.document.path;
+          const generation = state.loading;
+          await api("/api/review/restore", { path, etag: state.document.etag, revisionId: record.baseRevision });
+          await refreshAfterWrite(path, generation, "已恢复正文，后续历史仍然保留。");
         }));
       } else {
         if (record.after?.body) card.append(node("p", record.after.body));
@@ -553,6 +709,12 @@ async function importFiles(input, packaged) {
   finally { input.value = ""; }
 }
 function bind(selector, action) { $(selector).addEventListener("click", () => Promise.resolve().then(action).catch((error) => toast(error.message))); }
+bind("#edit-rich", startRich);
+bind("#save-rich", saveRich);
+bind("#close-rich", () => {
+  if (state.busy) return;
+  if (!richDirty || window.confirm("放弃尚未保存的正文草稿？")) closeRich();
+});
 bind("#import-files", () => $("#files-input").click());
 bind("#import-folder", () => $("#folder-input").click());
 bind("#import-package", () => desktop ? desktop.importPackage() : $("#package-input").click());
@@ -576,9 +738,13 @@ bind("#selection-comment", () => { if (state.selection) openComposer("comment", 
 bind("#selection-replace", () => { if (state.selection) openComposer("replace", state.selection); });
 bind("#reload", () => loadDocument(state.document.path));
 bind("#checkpoint", async () => {
+  if (!requireSavedDraft()) return;
+  if (state.pending) return;
   if (!window.confirm("以当前正文开始新一轮审阅？已有批注和修订历史将完整保留。")) return;
-  await api("/api/review/checkpoint", { path: state.document.path, etag: state.document.etag });
-  await loadDocument(state.document.path);
+  const path = state.document.path;
+  const generation = state.loading;
+  await api("/api/review/checkpoint", { path, etag: state.document.etag });
+  await refreshAfterWrite(path, generation, "已开始新一轮审阅，之前的记录仍然保留。");
 });
 bind("#composer-close", closeComposer);
 bind("#composer-cancel", closeComposer);
@@ -586,6 +752,28 @@ $("#composer").addEventListener("cancel", (event) => { if (state.busy) event.pre
 $("#composer-form").addEventListener("submit", submitComposer);
 $("#document-select").addEventListener("change", (event) => loadDocument(event.target.value).catch((error) => toast(error.message)));
 $("#comment-filter").addEventListener("change", renderReview);
+$("#comment-search").addEventListener("input", renderReview);
+for (const [selector, delta] of [["#previous-comment", -1], ["#next-comment", 1]]) bind(selector, async () => {
+  const comments = visibleComments();
+  if (!comments.length) return;
+  const index = comments.findIndex((item) => item.id === state.activeComment);
+  const comment = comments[index < 0 ? delta < 0 ? comments.length - 1 : 0 : (index + delta + comments.length) % comments.length];
+  await focusComment(comment);
+  document.getElementById(comment.id)?.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" });
+});
+for (const name of ["navigation", "review"]) bind(`#toggle-${name}`, () => {
+  const hidden = document.body.classList.toggle(`${name}-hidden`);
+  $(`#toggle-${name}`).setAttribute("aria-expanded", String(!hidden));
+});
+bind("#mcp-connect", () => {
+  $("#mcp-status").textContent = desktop ? "导出的配置适用于当前打开的工作区；关闭或重新打开工作区后，请重新导出。" : state.bootstrap.mcp?.enabled ? "MCP 已启用。将下面的地址和本机配置的令牌填入客户端。" : "MCP 尚未启用。设置本机环境变量 MARGIN_MCP_TOKEN 后，重新启动服务。";
+  $("#mcp-example").hidden = Boolean(desktop);
+  $("#mcp-example").textContent = JSON.stringify({ mcpServers: { margin: { type: "http", url: `${location.origin}/mcp`, headers: { "X-Margin": "1", Authorization: "Bearer <MARGIN_MCP_TOKEN>" } } } }, null, 2);
+  $("#mcp-export").hidden = !desktop;
+  $("#mcp-dialog").showModal();
+});
+bind("#mcp-close", () => $("#mcp-dialog").close());
+bind("#mcp-export", async () => { const result = await desktop.exportMcp(); if (result?.saved) toast("已导出本次连接配置，请在外部 Agent 中导入。关闭工作区后连接失效。"); });
 $("#document").addEventListener("pointerup", () => setTimeout(selectText, 0));
 $("#document").addEventListener("keyup", selectText);
 document.addEventListener("selectionchange", selectText);
@@ -618,13 +806,14 @@ bind("#theme", async () => {
   try { localStorage.setItem("margin.review.theme", document.documentElement.dataset.theme); } catch { /* optional */ }
   if (desktop) await desktop.theme(document.documentElement.dataset.theme);
 });
-window.addEventListener("beforeunload", (event) => { if (state.composer) { event.preventDefault(); event.returnValue = ""; } });
+window.addEventListener("beforeunload", (event) => { if (state.composer || richDirty) { event.preventDefault(); event.returnValue = ""; } });
 if (desktop) {
   $("#desktop-home").hidden = false;
   bind("#desktop-home", () => desktop.home());
   desktop.onMenuAction((action) => {
     if (action === "save") {
-      if ($("#composer").open) $("#composer-form").requestSubmit();
+      if (rich) saveRich().catch((error) => toast(error.message));
+      else if ($("#composer").open) $("#composer-form").requestSubmit();
       else toast("当前正文与审阅记录已保存。");
     } else if (["export-document", "export-package"].includes(action)) $(`#${action}`).click();
   });

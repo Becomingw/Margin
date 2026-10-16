@@ -62,6 +62,28 @@ try {
   const origin = new URL(page.url()).origin;
   assert.equal((await fetch(`${origin}/api/health`)).status, 403, "private backend requires the main-process token");
   assert.ok(!(await page.content()).includes(root));
+  const connectionFile = path.join(root, "mcp-connection.json");
+  await instance.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }); }, connectionFile);
+  await page.locator("#mcp-connect").click();
+  await page.locator("#mcp-export").click();
+  await page.waitForFunction(() => document.querySelector("#toast").textContent.includes("已导出本次连接配置"));
+  const connection = JSON.parse(await fs.readFile(connectionFile, "utf8")).mcpServers.margin;
+  const tools = await fetch(connection.url, { method: "POST", headers: { ...connection.headers, "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) });
+  assert.equal((await tools.json()).result.tools.length, 7);
+  let requestId = 1;
+  const mcp = async (method, params) => {
+    const response = await fetch(connection.url, { method: "POST", headers: { ...connection.headers, "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++requestId, method, params }) });
+    assert.equal(response.status, 200);
+    const message = await response.json();
+    assert.ok(!message.error && !message.result?.isError, JSON.stringify(message));
+    return message.result;
+  };
+  const tool = async (name, args) => (await mcp("tools/call", { name, arguments: args })).structuredContent;
+  const initialized = await mcp("initialize", { protocolVersion: "2025-06-18", clientInfo: { name: "desktop-review-test", version: "1" }, capabilities: {} });
+  assert.equal(initialized.serverInfo.name, "Margin");
+  assert.equal((await fetch(`${origin}/api/health`, { headers: connection.headers })).status, 403, "MCP credential cannot access the author API");
+  assert.ok(!(await page.content()).includes(connection.headers["X-Margin-Desktop-Token"]));
+  await page.locator("#mcp-close").click();
   await page.locator("#document-comment").click();
   await page.locator("#composer-body").fill("Desktop comment: verify the evidence.");
   await page.locator("#composer-submit").click();
@@ -71,6 +93,38 @@ try {
   await instance.evaluate(({ Menu }) => { Menu.getApplicationMenu().items.find((item) => item.label === "文件").submenu.items.find((item) => item.label === "保存当前编辑").click(); });
   await page.waitForFunction(() => !document.querySelector("#composer").open && document.querySelector("#document").textContent.includes("careful"));
   assert.equal(await fs.readFile(filename, "utf8"), source.replace("cautious", "careful"));
+  // Exercise the exported credential end to end, while an author has a draft open.
+  const currentSource = await tool("document_read", { path: "notes.md" });
+  await page.locator("#edit-source").click();
+  await page.locator("#composer-body").fill("Unsaved author draft survives incoming agent feedback.");
+  const position = currentSource.source.indexOf("careful");
+  const suggestion = await tool("review_suggest", { path: "notes.md", etag: currentSource.etag, start: position, end: position + 7, text: "qualified", body: "Qualify this claim until the evidence is replicated." });
+  assert.equal(await fs.readFile(filename, "utf8"), currentSource.source, "agent proposals never write source");
+  assert.equal(await page.locator("#composer-body").inputValue(), "Unsaved author draft survives incoming agent feedback.");
+  await page.locator("#composer-cancel").click();
+  await page.locator("#reload").click();
+  await page.waitForSelector(".suggestion-diff");
+  assert.match(await page.locator(`[id="${suggestion.id}"] .card-meta`).innerText(), /AI/);
+  await fs.mkdir(path.join(appRoot, "docs/images"), { recursive: true });
+  await page.locator(`#${suggestion.id}`).scrollIntoViewIfNeeded();
+  assert.equal(await page.locator(".review-pane").evaluate((element) => element.scrollTop), 0, "scrolling a comment must keep the review heading and filters in place");
+  await page.evaluate(() => { document.querySelector("#toast").hidden = true; });
+  await page.screenshot({ path: path.join(appRoot, "docs/images/desktop-mcp-review.png") });
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "采纳建议" }).click();
+  await page.waitForFunction(() => document.querySelector("#document").textContent.includes("qualified claim"));
+  const accepted = await tool("document_read", { path: "notes.md" });
+  assert.equal(accepted.baselineId, currentSource.baselineId, "acceptance leaves the baseline author-controlled");
+  assert.equal(accepted.source, currentSource.source.replace("careful", "qualified"));
+  const acceptedComment = (await tool("review_comments", { path: "notes.md" })).items.find((item) => item.id === suggestion.id);
+  assert.equal(acceptedComment.suggestion.status, "accepted");
+  assert.equal(acceptedComment.actor, "agent");
+  await page.locator('[data-tab="changes"]').click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator(".review-card").first().getByRole("button", { name: "恢复到此次修改前" }).click();
+  await page.waitForFunction(() => document.querySelector("#document").textContent.includes("careful claim"));
+  assert.equal(await fs.readFile(filename, "utf8"), currentSource.source, "restore keeps BOM, CRLF and the exact preceding manuscript");
+  await page.locator('[data-tab="comments"]').click();
   // Dirty navigation must stay on the current document when the author cancels.
   await page.locator("#edit-source").click();
   await page.locator("#composer-body").fill("Unsaved draft");
@@ -80,6 +134,21 @@ try {
   assert.equal(await page.locator("#composer-body").inputValue(), "Unsaved draft");
   await page.locator("#composer-cancel").click();
   await instance.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }); }, archive);
+  await page.locator("#edit-rich").click();
+  await page.waitForSelector(".rich-content[contenteditable=true]");
+  const richParagraph = page.locator(".rich-content > p").filter({ hasText: "careful" });
+  await richParagraph.click();
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowRight" : "End");
+  await page.keyboard.insertText(" Plate draft.");
+  await page.waitForFunction(() => !document.querySelector("#save-rich").disabled);
+  await page.evaluate(() => window.marginDesktop.home());
+  assert.equal(new URL(page.url()).origin, origin);
+  assert.match(await richParagraph.innerText(), /Plate draft/);
+  await page.evaluate(() => { document.querySelector("#toast").hidden = true; });
+  await page.screenshot({ path: path.join(appRoot, "docs/images/desktop-plate-editor.png"), animations: "disabled" });
+  await instance.evaluate(({ Menu }) => { Menu.getApplicationMenu().items.find((item) => item.label === "文件").submenu.items.find((item) => item.label === "保存当前编辑").click(); });
+  await page.waitForSelector("#rich-document", { state: "hidden" });
+  assert.equal(await fs.readFile(filename, "utf8"), currentSource.source.replace("claim 😀.", "claim 😀. Plate draft."));
   await page.locator("#export-package").click();
   await page.waitForFunction(() => document.querySelector("#toast").textContent.includes("handoff.marginreview"));
   assert.ok((await fs.stat(archive)).size > 100);
@@ -95,6 +164,7 @@ try {
   await fs.mkdir(path.join(appRoot, "docs/images"), { recursive: true });
   await page.screenshot({ path: path.join(appRoot, "docs/images/desktop-review.png") });
   const importedOrigin = new URL(page.url()).origin;
+  assert.equal((await fetch(`${importedOrigin}/mcp`, { method: "POST", headers: { ...connection.headers, "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) })).status, 403, "a previous workspace's credential cannot access the imported workspace");
   await page.locator("#desktop-home").click();
   await page.waitForURL("margin://app/");
   await page.waitForFunction(() => document.querySelectorAll("#recents button").length === 2);
@@ -116,6 +186,7 @@ try {
   await reopened.waitForFunction(() => document.querySelector("#comment-count")?.textContent === "2");
   assert.equal(await reopened.getAttribute("html", "data-theme"), "dark", "native appearance survives restart");
   assert.ok((await reopened.locator("#document").textContent()).includes("careful"));
+  assert.match(await reopened.locator("#document").textContent(), /Plate draft/);
   assert.equal(await reopened.locator(".md-math mjx-container").count(), 3);
   // Open a second format directly, including a file hidden from the default list.
   const tex = path.join(project, "appendix.tex");
@@ -145,7 +216,7 @@ try {
   await reopened.waitForFunction(() => document.querySelector("#connection").textContent.includes("已断开"));
   await reopened.locator("#desktop-home").click();
   await reopened.waitForURL("margin://app/");
-  console.log("Desktop smoke passed: sandbox, native open, token protection, save menu, dirty navigation, export/import, persistence, recent projects and backend cleanup.");
+  console.log("Desktop smoke passed: sandbox, native open, scoped MCP connection, agent suggestion, preserved draft, human acceptance/restore, token rotation, save menu, dirty navigation, export/import, persistence, recent projects and backend cleanup.");
 } finally {
   await instance?.close();
   await cleanupAll();

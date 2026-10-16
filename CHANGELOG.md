@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-10-17
+
+- Add a scoped React / Plate / Slate Markdown editor (issue #6) with direct text
+  editing, formatting, links, tables, undo/redo and explicit revision saves.
+  Retain exact untouched source, mapped text edits, BOM/line endings and protected
+  source blocks for MathJax, HTML and unsupported constructs.
+- Keep rich-text drafts across review views, reject conflicting saves without
+  discarding input, map clean selections to review anchors and preserve the native
+  save/dirty-navigation workflow. Bundle editor assets and full licenses locally.
+- Add external-agent MCP over stateless HTTP and a stdio adapter: paginated source,
+  comments and history, attributed feedback, replies and proposed source changes.
+  Desktop exports a scoped, per-workspace connection through a native dialog.
+- Preview, accept or reject AI suggestions in the review sidebar. Human acceptance
+  is atomic, stale source is rejected, baselines stay unchanged and ZIPs retain
+  attribution, suggestions and complete history.
+- Add collapsible navigation/review panes, comment search and previous/next
+  navigation, active-card emphasis and a quieter manuscript toolbar. Keep review
+  headings and filters visible while the comment list scrolls.
+- Index comment highlight ranges once per snapshot instead of scanning every
+  comment for every displayed character. Reject stale original-view responses
+  during document switches and clear obsolete outlines in source-diff mode.
+- Preserve the selected document when a previous write finishes late, reveal saved
+  comments, and distinguish successful writes from failed follow-up refreshes.
+- Verify the real Electron MCP workflow, including preserved author drafts,
+  human acceptance/restore, per-workspace credential rotation and restart history.
+
 ## [0.2.1] — 2026-10-12
 
 - Use local MathJax for Markdown formulas, including AMS environments, chemistry,

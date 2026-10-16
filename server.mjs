@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { buildRelatedCommentContext } from "./agent-context.mjs";
 import { parseMarkdown } from "./markdown.mjs";
 import { createReviewStore, safeReviewPath } from "./review-store.mjs";
+import { createMcp, mcpProtocolVersions } from "./mcp.mjs";
 import { exportReviewPackage, importReviewPackage, PACKAGE_LIMIT } from "./review-package.mjs";
 import {
   AGENT_PROVIDERS,
@@ -50,6 +51,7 @@ rememberConfig(config);
 // Only MARGIN_HOST selects a different bind address.
 const host = hostFromEnvironment(process.env);
 const desktopToken = process.env.MARGIN_DESKTOP_TOKEN || "";
+const mcpToken = process.env.MARGIN_MCP_TOKEN || "";
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 const hostIsLoopback = loopbackHosts.has(host);
 const publicRoot = path.join(appRoot, "public");
@@ -7870,19 +7872,22 @@ async function importReview(body) {
   return result;
 }
 
+const mcp = createMcp({ version: appVersion(), store: reviewStore, listDocuments, lock: withProjectLock, changed: (documentPath) => emit("review", { path: documentPath || null, action: "agent" }), publicError: (error) => errorResponse(error).message });
+const tokenMatches = (supplied, expected) => Boolean(expected) && timingSafeEqual(createHash("sha256").update(supplied).digest(), createHash("sha256").update(expected).digest());
 const server = createServer(async (request, response) => {
   try {
     assertAllowedHost(request);
-    if (desktopToken) {
-      const supplied = String(request.headers["x-margin-desktop-token"] || "");
-      if (!timingSafeEqual(createHash("sha256").update(supplied).digest(), createHash("sha256").update(desktopToken).digest())) throw new HttpError(403, "This desktop workspace requires its private session token.");
-    }
     let url;
     try {
       // The Host header was validated above; the base only anchors the parse.
       url = new URL(request.url || "/", `http://127.0.0.1:${port}`);
     } catch {
       throw new HttpError(400, "Malformed request URL.");
+    }
+    if (desktopToken) {
+      const supplied = String(request.headers["x-margin-desktop-token"] || "");
+      // The exported desktop credential is scoped to MCP, never the author API.
+      if (!tokenMatches(supplied, desktopToken) && !(url.pathname === "/mcp" && tokenMatches(supplied, mcpToken))) throw new HttpError(403, "This desktop workspace requires its private session token.");
     }
     const readOnly = request.method === "GET" || request.method === "HEAD";
     if (!readOnly) {
@@ -7893,6 +7898,25 @@ const server = createServer(async (request, response) => {
       }
     }
 
+    if (url.pathname === "/mcp") {
+      if (!mcpToken) throw new HttpError(404, "MCP is disabled. Set MARGIN_MCP_TOKEN in the machine environment and restart.");
+      if (!tokenMatches(String(request.headers.authorization || ""), `Bearer ${mcpToken}`)) throw new HttpError(403, "Use the workspace MCP connection token.");
+      if (request.method !== "POST") { response.writeHead(405, { Allow: "POST" }); response.end(); return; }
+      if (!/^application\/json\b/i.test(String(request.headers["content-type"] || ""))) throw new HttpError(415, "Use application/json.");
+      const protocol = request.headers["mcp-protocol-version"];
+      if (protocol && !mcpProtocolVersions.includes(protocol)) throw new HttpError(400, "Unsupported MCP protocol version.");
+      let message;
+      try { message = await readJson(request); }
+      catch (error) {
+        if (error.status !== 400) throw error;
+        json(response, 400, { jsonrpc: "2.0", id: null, error: { code: error.message === "Request body is not valid JSON." ? -32700 : -32600, message: error.message } });
+        return;
+      }
+      const result = await mcp(message);
+      if (result === null) { response.writeHead(202); response.end(); }
+      else json(response, 200, result);
+      return;
+    }
     if (retiredReviewRoutes.test(url.pathname)) throw new HttpError(410, "AI tasks are not available in the review workspace.");
     if (request.method === "GET" && url.pathname === "/api/review") {
       json(response, 200, await withProjectLock(() => reviewStore.open(url.searchParams.get("path"))));
@@ -7908,7 +7932,7 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === "POST" && url.pathname.startsWith("/api/review/")) {
       const action = url.pathname.slice("/api/review/".length);
-      const methods = { save: reviewStore.save, comment: reviewStore.comment, "comment-update": reviewStore.updateComment, restore: reviewStore.restore, checkpoint: reviewStore.checkpoint, import: importReview };
+      const methods = { save: reviewStore.save, comment: reviewStore.comment, "comment-update": reviewStore.updateComment, "suggestion-resolve": reviewStore.resolveSuggestion, restore: reviewStore.restore, checkpoint: reviewStore.checkpoint, import: importReview };
       if (!Object.hasOwn(methods, action)) throw new HttpError(404, "Unknown review action.");
       const body = await readJson(request, action === "import" ? Math.ceil(PACKAGE_LIMIT * 1.4) : 2_000_000);
       const value = await withProjectLock(() => methods[action](body));
@@ -7934,7 +7958,7 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (request.method === "GET" && url.pathname === "/api/bootstrap") {
-      json(response, 200, { title: config.title, configPath: path.basename(configPath), projectLabel: "Local review workspace", defaultDocument: config.defaultDocument, initialDocument: config.ui?.initialDocument || config.defaultDocument, documents: await listDocuments(), formats: ["markdown", "latex"], reviewPackageVersion: 1, agent: { enabled: false, providers: [] }, latex: { enabled: config.latex.enabled, available: latexAvailable() }, compile: compileState });
+      json(response, 200, { title: config.title, configPath: path.basename(configPath), projectLabel: "Local review workspace", defaultDocument: config.defaultDocument, initialDocument: config.ui?.initialDocument || config.defaultDocument, documents: await listDocuments(), formats: ["markdown", "latex"], reviewPackageVersion: 1, mcp: { enabled: Boolean(mcpToken), endpoint: "/mcp" }, agent: { enabled: false, providers: [] }, latex: { enabled: config.latex.enabled, available: latexAvailable() }, compile: compileState });
       return;
     }
     if (request.method === "GET" && url.pathname === "/api/health") {

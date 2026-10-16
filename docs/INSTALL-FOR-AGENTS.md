@@ -2,7 +2,8 @@
 
 Ask for the document/project path and whether optional LaTeX PDF compilation is
 wanted. Markdown and LaTeX are equal entry formats. **Do not ask for an AI backend,
-model or key**: this version performs manual review only.
+model or key**: Margin runs no models. Optional [external-agent MCP](mcp.md) adds
+attributed feedback and proposed edits; the author confirms source changes.
 
 Use this checkout outside the manuscript repository, with Node.js 20 or newer.
 For a fresh installation, clone `https://github.com/Becomingw/Margin.git`.

@@ -11,6 +11,7 @@ const commands = {
   doctor: "scripts/doctor.mjs",
   start: "server.mjs",
   demo: "scripts/demo.mjs",
+  mcp: "bin/margin-mcp.mjs",
 };
 const usage = [
   "Usage: margin <command> [options]",
@@ -19,6 +20,7 @@ const usage = [
   "  doctor [--json]                Check Node, KaTeX, the project and optional LaTeX",
   "  start [--repo dir] [--port n] [--open]   Start the local server",
   "  demo [--port n] [--open]        Run on a throwaway copy of the bundled sample paper",
+  "  mcp                           Connect an external agent over stdio (MARGIN_MCP_URL/TOKEN)",
   "",
   "  margin --version | --help",
 ].join("\n");

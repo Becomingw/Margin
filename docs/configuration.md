@@ -3,6 +3,12 @@
 `npm run setup -- <document-or-project>` writes `.margin.json`. Either Markdown
 or LaTeX can be the entry document. Configuration is loaded once at startup.
 
+External-agent MCP is configured **only on the machine**, never in this project
+JSON: `MARGIN_MCP_TOKEN` enables the CLI server's `/mcp` endpoint (unset disables
+it); `MARGIN_MCP_URL` selects the running endpoint for `margin mcp` only. Desktop
+creates a per-workspace scoped credential and exports it using a native dialog.
+See [MCP setup and workflow](mcp.md). No project `mcp` or model setting is needed.
+
 ```json
 {
   "title": "My review",

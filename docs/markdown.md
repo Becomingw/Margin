@@ -1,7 +1,29 @@
 # Markdown 阅读支持
 
 基础增强阅读自 **v0.2.0** 起提供；MathJax 兼容增强和选区按钮修复自 **v0.2.1** 起提供。
-阅读视图与源码编辑分开：选区修订会显示对应的原始 Markdown，保存后重新渲染。
+阅读视图保留源码选区映射；v0.3.0 新增 Plate / Slate 正文富文本编辑。
+
+## 直接编辑正文（v0.3.0）
+
+打开 Markdown 后点击 **直接编辑正文**，即可在排版后的正文中输入，使用工具栏
+调整粗体、斜体、删除线、行内代码、标题、列表、链接与表格。支持撤销／重做；
+点击 **保存正文**、按 Ctrl/Cmd+S 或使用桌面保存菜单，将草稿保存为一条修订。
+打开编辑器、移动光标和切换原稿／修订视图不会改写文件，切换视图保留草稿。
+
+- 未修改块直接复用原始源码；普通文字替换和增加强调优先映射到原始字符范围。
+  结构性修改只序列化受影响的块，其中的 Markdown 写法可能规范化。
+- 保留 BOM、换行和块间内容；文件外部变化时拒绝过期保存，并保留本地草稿。
+- 已保存正文支持选区批注、批注高亮和导航。草稿尚未保存时先保存，再创建批注
+  或采纳 Agent 建议，避免把新文字锚定到旧版本。
+- MathJax 公式、图片、任务框、脚注、HTML、front matter 以及无法可靠映射的结构
+  以保真的源码块保留显示，使用 **编辑此块源码** 修改。复杂公式不会降级。
+- 粘贴采用纯文本，不导入网页 HTML 或远程资源。编辑状态下链接用于文字编辑；
+  结束编辑后可在阅读视图打开链接。
+
+这是限定在正文区的 React 19 + Plate 53 / Slate 编辑器。现有 markdown-it / parse5
+继续负责保真阅读、历史版本和源码映射；没有把整篇原稿交给编辑器重新序列化。
+开发环境 `npm ci` 自动执行编辑器本地构建，修改 `editor/` 后运行
+`npm run build:editor`。发行内容包含本地 bundle 和第三方许可证，不请求 CDN。
 
 ## 支持的语法
 
@@ -62,7 +84,7 @@ Typora 使用 MathJax，v0.2.0 的 Margin 使用 KaTeX，因此同一段 LaTeX �
 - HTML 脚本、事件、任意样式、iframe、嵌入媒体、交互表单和内联 SVG 不执行。
   SVG 文件作为受限图片显示。
 - 代码块目前不做语法着色；Mermaid、PlantUML、MDX、插件组件与任意网页布局不渲染。
-- 任务框只读，编辑源码中的 `[ ]` / `[x]` 后更新。这里不是所见即所得编辑器。
+- 任务框只读，编辑源码中的 `[ ]` / `[x]` 后更新。
 
 解析使用本地 markdown-it、markdown-it-footnote 和 parse5；新版 Markdown 公式使用本地
 MathJax，LaTeX 阅读视图继续使用 KaTeX。
@@ -74,3 +96,5 @@ MathJax，LaTeX 阅读视图继续使用 KaTeX。
 `npm run test:markdown` checks actual Chromium rendering, table/HTML/entity edits,
 comments, original view, local navigation, images, mobile layout and package restoration.
 `npm run test:desktop` checks the Electron shell and external-link scheme boundary.
+`npm run test:editor` checks real Plate editing, exact saves, selection comments,
+undo/redo, composition input, tables, retained drafts, MCP feedback and conflicts.

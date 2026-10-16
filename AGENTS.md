@@ -47,14 +47,18 @@ path resolution or child processes. Report vulnerabilities privately.
 - `review-store.mjs`: identity, history, anchors, transaction recovery.
 - `review-package.mjs`: versioned ZIP import/export and validation.
 - `markdown.mjs`: source-preserving display and character mapping.
+- `editor/`: scoped React/Plate Markdown editor and source-aware draft adapter.
 - `names.mjs`, `config.mjs`, `env.mjs`: namespace and validated local configuration.
 - `desktop/`: sandboxed Electron launcher, native dialogs, managed workspaces.
 - `bin/margin.mjs`, `scripts/setup.mjs`, `doctor.mjs`, `demo.mjs`: command entry points.
 - `tests/`: node:test suites and fictional fixtures.
 
 Do not split the server or app monolith as a side effect. Reuse existing helpers.
-No framework, bundler or transpiler. Runtime libraries are KaTeX, markdown-it,
-markdown-it-footnote, parse5 (issue #3) and mathjax-full (issue #4).
+The main workspace stays plain DOM. Issue #6 authorizes React/Plate/Slate only
+inside the Markdown editor and an editor-only esbuild step. `npm ci` builds the
+local bundle; use `npm run build:editor` after editor changes. Other runtime
+libraries are KaTeX, markdown-it, markdown-it-footnote, parse5 (issue #3) and
+mathjax-full (issue #4).
 Electron, electron-builder and Playwright are development/distribution tools.
 
 ## Commands
@@ -67,6 +71,7 @@ npm run setup -- /path/to/document-or-project --no-compile --json
 npm run doctor -- --json
 npm run screenshots
 npm run test:markdown
+npm run test:editor
 npm run desktop
 npm run test:desktop
 ```

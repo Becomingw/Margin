@@ -49,6 +49,16 @@ restricted. Native exports cannot overwrite the active project's source/history.
 An explicit link action permits only HTTP(S) and mailto URLs in the system handler;
 file, data, JavaScript and custom protocol links cannot reach the native shell.
 
+External-agent MCP uses a separate private per-workspace credential, accepted only
+at `/mcp`. A native save dialog can export that connection; no credential is sent
+to renderer scripts. The endpoint also requires Bearer authorization and the
+normal Host, Origin and JSON checks. The CLI enables it only when the machine sets
+`MARGIN_MCP_TOKEN`. Tokens are stripped from project children and redacted from
+messages. MCP tools write attributed review metadata only; proposed source edits
+require an explicit author acceptance with exact source/hash conflict checking.
+The CLI's ordinary author API remains trusted-local, not a sandbox for arbitrary
+external programs with filesystem or HTTP access.
+
 ## Configuration and optional processes
 
 AI routes return 410; legacy configuration cannot enable model execution. API

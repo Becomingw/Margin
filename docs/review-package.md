@@ -30,6 +30,10 @@ other file with `path` and SHA-256. Checksums detect corruption, not authorship.
   The first parent is null. The last revision is the current source.
 - `comments[]`: stable `id`, `documentId`, `body`, `status` (`open`, `resolved`,
   `deleted`), timestamps, and `replies[]` (`id`, `body`, `createdAt`, `actor`).
+  Optional `actor` is `author` (also the legacy default) or `agent`. Optional
+  `suggestion` has `text`, original source `etag`, `status` (`pending`, `accepted`,
+  `rejected`), and `appliedRevision` after acceptance. These additive v1 fields
+  survive ZIP export/import; acceptance must still match the original source hash.
 - `original`: `revisionId`, `start`, `end`, exact `quote`, nearby `prefix`/`suffix`,
   and heading text. It is never replaced when the document changes.
 - `anchor`: revision ID, source range, and `attached`, `modified`, `deleted` or

@@ -289,6 +289,7 @@ export function rememberConfig(config) {
 export function childEnvironment({ provider = null, config = knownConfig } = {}) {
   const env = { ...process.env };
   delete env.MARGIN_DESKTOP_TOKEN;
+  delete env.MARGIN_MCP_TOKEN;
   const keep = provider && PROVIDER_TABLE[provider]?.kind === "api"
     ? apiSettings(provider, config, process.env).apiKeyEnv
     : null;
@@ -301,7 +302,7 @@ export function childEnvironment({ provider = null, config = knownConfig } = {})
 /** Replace the literal value of every API key with "[redacted]". */
 export function redactSecrets(value, { config = knownConfig } = {}) {
   let text = String(value ?? "");
-  for (const name of [...apiKeyVariableNames(config, process.env), "MARGIN_DESKTOP_TOKEN"]) {
+  for (const name of [...apiKeyVariableNames(config, process.env), "MARGIN_DESKTOP_TOKEN", "MARGIN_MCP_TOKEN"]) {
     const secret = process.env[name];
     if (!secret || secret.length < 6) continue;
     text = text.split(secret).join("[redacted]");

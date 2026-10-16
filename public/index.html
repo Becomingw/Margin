@@ -16,11 +16,14 @@
       <strong id="project-title"></strong>
       <button id="desktop-home" hidden>工作区</button>
       <span id="connection" role="status">正在连接…</span>
+      <button id="toggle-navigation" aria-expanded="true" aria-controls="navigation" title="显示或收起文档导航">文档</button>
+      <button id="toggle-review" aria-expanded="true" aria-controls="review-pane" title="显示或收起审阅侧栏">批注</button>
+      <button id="mcp-connect" title="连接外部 Agent 进行评阅">MCP</button>
       <button id="theme" class="icon-button" aria-label="切换深浅主题" title="切换深浅主题"><svg class="icon" aria-hidden="true"><use href="/icons.svg#sun" /></svg></button>
       <button id="export-package" class="primary"><svg class="icon" aria-hidden="true"><use href="/icons.svg#export" /></svg>导出审阅包</button>
     </header>
     <div class="workspace">
-      <aside class="navigation">
+      <aside class="navigation" id="navigation">
         <div class="navigation-body">
           <div class="section-label"><h2>工作区文档</h2><span id="document-total" class="count">0</span></div>
           <select id="document-select" aria-label="打开文档"></select>
@@ -45,6 +48,10 @@
           </div>
         </header>
         <div class="editing-toolbar">
+          <button id="edit-rich" hidden>直接编辑正文</button>
+          <button id="save-rich" class="primary" hidden>保存正文</button>
+          <button id="close-rich" hidden>结束编辑</button>
+          <span id="rich-status" role="status" hidden></span>
           <button id="edit-source"><svg class="icon" aria-hidden="true"><use href="/icons.svg#edit" /></svg>编辑源码</button>
           <button id="document-comment"><svg class="icon" aria-hidden="true"><use href="/icons.svg#comment" /></svg>全文批注</button>
           <span class="toolbar-spacer"></span>
@@ -54,8 +61,9 @@
         <div id="external-notice" class="notice" hidden>文件或审阅记录已变化。<button id="reload">重新载入</button></div>
         <div id="encoding-notice" class="notice" hidden></div>
         <article id="document" class="paper" aria-label="文档正文"></article>
+        <article id="rich-document" class="paper" aria-label="Markdown 富文本编辑器" hidden></article>
       </main>
-      <aside class="review-pane" aria-label="审阅记录">
+      <aside class="review-pane" id="review-pane" aria-label="审阅记录">
         <header class="inspector-heading"><div><span class="eyebrow">IN THE MARGIN</span><h2>审阅记录</h2></div><svg class="icon" aria-hidden="true"><use href="/icons.svg#comment" /></svg></header>
         <nav class="review-tabs" role="group" aria-label="记录类型">
           <button data-tab="comments" aria-pressed="true">批注 <span id="comment-count">0</span></button>
@@ -63,6 +71,7 @@
           <button data-tab="history" aria-pressed="false">全部历史</button>
         </nav>
         <label class="filter" id="comment-filter-label">显示 <select id="comment-filter"><option value="open">未解决</option><option value="all">全部（含已删除）</option><option value="resolved">已解决</option></select></label>
+        <div id="comment-navigation" class="comment-navigation"><input id="comment-search" type="search" placeholder="搜索批注与回复…" aria-label="搜索批注与回复" /><div><span id="comment-position" class="muted" aria-live="polite"></span><button id="previous-comment" aria-label="上一条批注">↑</button><button id="next-comment" aria-label="下一条批注">↓</button></div></div>
         <div id="review-list"></div>
       </aside>
     </div>
@@ -82,6 +91,14 @@
         <p id="composer-error" role="alert"></p>
         <footer><button type="button" id="composer-cancel">取消</button><button type="submit" class="primary" id="composer-submit">保存批注</button></footer>
       </form>
+    </dialog>
+    <dialog id="mcp-dialog" aria-labelledby="mcp-title">
+      <header><h2 id="mcp-title">连接外部 Agent</h2><button id="mcp-close" aria-label="关闭 MCP 配置">×</button></header>
+      <p>让外部 Agent 读取论文、添加批注、回复讨论并提交修改建议。你确认后，建议才会写入正文；所有来源与历史都会保留。</p>
+      <p id="mcp-status" class="hint"></p>
+      <pre id="mcp-example" class="connection-example"></pre>
+      <p class="hint">客户端使用 Streamable HTTP；仅支持 stdio 的客户端可运行 <code>margin mcp</code>，并在客户端环境中设置 MARGIN_MCP_URL 与 MARGIN_MCP_TOKEN。连接配置仅保存在本机。</p>
+      <footer><button id="mcp-export" class="primary" hidden>导出本次连接配置…</button></footer>
     </dialog>
     <input id="files-input" type="file" multiple accept=".md,.tex,.bib,.sty,.cls,.png,.jpg,.jpeg,.gif,.webp,.svg,.pdf" hidden />
     <input id="folder-input" type="file" multiple webkitdirectory hidden />

@@ -45,6 +45,21 @@ following third-party components. Each stays under its own licence.
 These run in the local Node backend, without browser CDNs or a build step.
 Their transitive dependencies retain their own notices in `node_modules`.
 
+## Plate / Slate Markdown editor
+
+Issue #6 authorizes a React 19 / Plate 53 editor island, bundled locally with
+esbuild. Plate, Slate, React, the Plate plugins and remark-gfm retain their MIT
+licenses. They are build-time npm dependencies; their browser code ships in
+`public/editor/editor.js`. The build also writes `THIRD-PARTY-LICENSES.txt` with
+the full licenses of bundled packages and keeps esbuild's legal comments.
+No CDN or remote runtime assets are used.
+
+Some upstream tarballs omit their license files. The build supplements these with
+the Plate/React repository licenses and copies in `editor/licenses/` from:
+https://github.com/ianstormtaylor/slate/blob/main/License.md,
+https://github.com/udecode/jotai-x/blob/main/LICENSE (also used by zustand-x), and
+https://github.com/JohannesKlauss/react-hotkeys-hook/blob/master/LICENSE.
+
 ## Fonts vendored in `public/fonts/`
 
 Both families are variable fonts in WOFF2 format, subset to the Latin and
@@ -77,6 +92,6 @@ does not modify the font files.
 
 ## Development and test tooling
 
-The test suite uses only Node.js built-ins (`node:test`, `node:assert`).
-`npm run screenshots` needs Playwright (Apache-2.0), which is installed by hand
-for that run and is neither a dependency nor redistributed.
+The test runner uses Node.js built-ins (`node:test`, `node:assert`). Browser and
+Electron checks use Playwright (Apache-2.0), a development dependency. esbuild
+(MIT) builds only the editor island; neither tool is shipped as a runtime service.

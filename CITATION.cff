@@ -5,7 +5,7 @@ title: "Margin · 页边"
 abstract: "An independent local manual-review workspace for Markdown and LaTeX, with comments, source revisions and portable review history."
 authors:
   - name: "Margin contributors"
-version: "0.2.1"
+version: "0.3.0"
 repository-code: "https://github.com/Becomingw/Margin"
 url: "https://github.com/Becomingw/Margin"
 license: MIT

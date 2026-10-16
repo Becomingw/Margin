@@ -142,10 +142,11 @@ function installMenu() {
 }
 async function startService(project) {
   const token = randomBytes(32).toString("hex");
+  const mcpToken = randomBytes(32).toString("hex");
   const child = utilityProcess.fork(path.join(directory, "service.mjs"), ["--repo", project.root, "--port", "0"], {
-    cwd: project.root, env: { ...desktopEnvironment(), MARGIN_DESKTOP_TOKEN: token }, stdio: "pipe", serviceName: "Margin review service",
+    cwd: project.root, env: { ...desktopEnvironment(), MARGIN_DESKTOP_TOKEN: token, MARGIN_MCP_TOKEN: mcpToken }, stdio: "pipe", serviceName: "Margin review service",
   });
-  const service = { child, token, origin: null, project, stopping: false, exited: false };
+  const service = { child, token, mcpToken, origin: null, project, stopping: false, exited: false };
   services.add(service);
   // Drain output; backend startup logs include local paths and stay out of IPC.
   child.stdout?.on("data", () => {});
@@ -226,7 +227,10 @@ async function exportFile(kind, relative) {
   const service = current;
   let content;
   let defaultName = "margin-review.marginreview";
-  if (kind === "document") {
+  if (kind === "mcp") {
+    defaultName = "margin-mcp.json";
+    content = Buffer.from(JSON.stringify({ mcpServers: { margin: { type: "http", url: `${service.origin}/mcp`, headers: { "X-Margin": "1", Authorization: `Bearer ${service.mcpToken}`, "X-Margin-Desktop-Token": service.mcpToken } } } }, null, 2) + "\n");
+  } else if (kind === "document") {
     if (typeof relative !== "string" || path.isAbsolute(relative) || !/\.(md|tex)$/i.test(relative)) throw new Error("请先打开要导出的文档。");
     const response = await fetch(`${service.origin}/api/document?path=${encodeURIComponent(relative)}`, { headers: { "X-Margin-Desktop-Token": service.token } });
     const value = await response.json();
@@ -238,7 +242,7 @@ async function exportFile(kind, relative) {
     if (!response.ok) throw new Error((await response.json()).error);
     content = Buffer.from(await response.arrayBuffer());
   }
-  const choice = await dialog.showSaveDialog(window, { title: kind === "document" ? "导出正文" : "导出审阅包", defaultPath: path.join(app.getPath("documents"), defaultName), filters: [{ name: kind === "document" ? "文档" : "Margin 审阅包", extensions: kind === "document" ? [path.extname(defaultName).slice(1)] : ["marginreview", "zip"] }] });
+  const choice = await dialog.showSaveDialog(window, { title: kind === "mcp" ? "导出本次工作区的 MCP 连接配置" : kind === "document" ? "导出正文" : "导出审阅包", defaultPath: path.join(app.getPath("documents"), defaultName), filters: [{ name: kind === "mcp" ? "MCP 配置" : kind === "document" ? "文档" : "Margin 审阅包", extensions: kind === "mcp" ? ["json"] : kind === "document" ? [path.extname(defaultName).slice(1)] : ["marginreview", "zip"] }] });
   if (choice.canceled || !choice.filePath) return null;
   // Export is not a tracked edit: do not let a save dialog overwrite a project
   // source or its private history under the guise of exporting a copy.
@@ -287,6 +291,7 @@ async function dispatch(action, value) {
   }
   if (action === "export-package") return exportFile("package");
   if (action === "export-document") return exportFile("document", value);
+  if (action === "export-mcp") return exportFile("mcp");
   if (!["open-file", "open-folder", "import-package"].includes(action)) throw new Error("未知桌面操作。");
   const folder = action === "open-folder";
   const chosen = await dialog.showOpenDialog(window, {

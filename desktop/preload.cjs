@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld("marginDesktop", Object.freeze({
   recent: () => invoke("recents"),
   openRecent: (id) => invoke("recent", id),
   exportPackage: () => invoke("export-package"),
+  exportMcp: () => invoke("export-mcp"),
   exportDocument: (relative) => invoke("export-document", relative),
   openDropped: (file) => invoke("open-path", webUtils.getPathForFile(file)),
   onMenuAction: (callback) => {

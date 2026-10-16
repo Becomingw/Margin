@@ -17,12 +17,18 @@ it("macOS packaging can parse application property lists with its installed depe
 });
 
 it("desktop tokens are redacted and never inherited by project children", () => {
+  const previousMcp = process.env.MARGIN_MCP_TOKEN;
+  process.env.MARGIN_MCP_TOKEN = "fixture-private-mcp-token";
   const previous = process.env.MARGIN_DESKTOP_TOKEN;
   process.env.MARGIN_DESKTOP_TOKEN = "fixture-private-desktop-token";
   try {
     assert.equal(childEnvironment().MARGIN_DESKTOP_TOKEN, undefined);
     assert.equal(redactSecrets("token=fixture-private-desktop-token"), "token=[redacted]");
+    assert.equal(childEnvironment().MARGIN_MCP_TOKEN, undefined);
+    assert.equal(redactSecrets("Bearer fixture-private-mcp-token"), "Bearer [redacted]");
   } finally {
+    if (previousMcp === undefined) delete process.env.MARGIN_MCP_TOKEN;
+    else process.env.MARGIN_MCP_TOKEN = previousMcp;
     if (previous === undefined) delete process.env.MARGIN_DESKTOP_TOKEN;
     else process.env.MARGIN_DESKTOP_TOKEN = previous;
   }

@@ -20,7 +20,15 @@ Bring reading, feedback, editing and version history together—from a first pap
 draft to a polished technical document. Your manuscript keeps its original format;
 review records live alongside it. No account, cloud service or AI setup required.
 
+**New in v0.3.0:** direct Markdown editing with Plate / Slate, external-agent MCP,
+and faster, more stable review navigation. [Release notes](docs/releases/v0.3.0.md).
+
 ## From reading to handoff
+
+External agents can connect through the **MCP** button to read manuscripts, review
+comments/history, add attributed feedback and propose edits. Authors preview and
+accept suggestions as tracked revisions. Desktop exports a scoped connection;
+CLI supports HTTP and stdio. See [MCP setup](docs/mcp.md).
 
 ### Read with room to think
 
@@ -68,6 +76,18 @@ your source with review markers.
 
 ### Revise with the reason attached
 
+The Markdown editor uses **Plate / Slate** in a scoped React island.
+Choose **直接编辑正文** to type into the rendered manuscript, format text and edit
+tables. Save explicitly to record a revision. Source-aware edits preserve untouched
+blocks; formulas and unsupported structures retain their source-edit fallback.
+See [editing and compatibility](docs/markdown.md). `npm ci` builds the local editor;
+run `npm run build:editor` after changing `editor/`.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/plate-editor-dark.png">
+  <img src="docs/images/plate-editor-light.png" alt="Plate Markdown editor with formatting, tables and source-anchored comments" width="100%">
+</picture>
+
 Make a local replacement or edit the full source. When saving, add a reason and
 optionally link a comment—keeping what changed connected to why it changed.
 
@@ -112,29 +132,30 @@ package in its own workspace.
 | Reviewing your own paper | Read once to flag gaps in reasoning and expression, then revise one comment at a time. |
 | Working with an advisor or co-author | Exchange review packages that carry feedback, replies and editing reasons together. |
 | Refining technical documentation | Keep Markdown in its original format and compare changes across review rounds. |
-| Working with an external agent | Share the manuscript and feedback from a review package as context for an external tool. |
+| Working with an external agent | Connect through MCP to read, comment and propose edits; review each suggestion before accepting it. |
 
 ## Download and get started
 
-| Platform | v0.2.1 installer |
+| Platform | v0.3.0 installer |
 | --- | --- |
-| macOS · Apple Silicon | [Download DMG](https://github.com/Becomingw/Margin/releases/download/v0.2.1/Margin-0.2.1-mac-arm64.dmg) |
-| macOS · Intel | [Download DMG](https://github.com/Becomingw/Margin/releases/download/v0.2.1/Margin-0.2.1-mac-x64.dmg) |
-| Windows · x64 | [Download installer](https://github.com/Becomingw/Margin/releases/download/v0.2.1/Margin-0.2.1-win-x64.exe) |
+| macOS · Apple Silicon | [Download DMG](https://github.com/Becomingw/Margin/releases/download/v0.3.0/Margin-0.3.0-mac-arm64.dmg) |
+| macOS · Intel | [Download DMG](https://github.com/Becomingw/Margin/releases/download/v0.3.0/Margin-0.3.0-mac-x64.dmg) |
+| Windows · x64 | [Download installer](https://github.com/Becomingw/Margin/releases/download/v0.3.0/Margin-0.3.0-win-x64.exe) |
 
 1. **Install Margin.** On macOS, drag it to Applications; on Windows, run the installer. No separate Node installation needed.
 2. **Open a document or project.** Choose a `.md`, `.tex` or folder, drag it in, or import a review package you received.
 3. **Leave your first note.** Select text to comment, save your edits and revisit them in the changes view.
 
-macOS ZIPs, checksums and verification details are on the [release page](https://github.com/Becomingw/Margin/releases/tag/v0.2.1).
+macOS ZIPs, checksums and verification details are on the [release page](https://github.com/Becomingw/Margin/releases/tag/v0.3.0).
 Current builds are unsigned and macOS builds are not notarized; your system may display an unidentified-publisher prompt.
 
 <details>
 <summary><strong>A few things to know</strong></summary>
 
 - Margin focuses on manual review. There is no built-in AI execution and no model or API key to configure.
-- The Markdown [support guide](docs/markdown.md) lists syntax and limits. Editing
-  remains source-based. LaTeX is a reading view, not a typeset PDF editor.
+- Markdown supports direct rich-text editing with explicit saves. Complex formulas,
+  HTML and unsupported structures keep source-edit fallbacks; see the [support guide](docs/markdown.md).
+  LaTeX is a source-preserving review view, not a typeset PDF editor.
 - Non-UTF-8 files remain read-only. Review packages are limited to 32 MiB compressed and expanded, and include earlier versions and deleted comments.
 - Packages restore complete reviews; they do not automatically merge branches with the same IDs. Editing `REVIEW.md` alone does not create an importable patch.
 - For the local browser version or source installation, see the [installation guide](docs/INSTALL-FOR-AGENTS.md). Existing users can follow the [migration guide](docs/migration.md).

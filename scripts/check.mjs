@@ -3,7 +3,7 @@
 // bin/, scripts/ and tests/ (recursively), plus the browser bundle. New files are
 // picked up automatically, so none can be forgotten.
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,7 +26,8 @@ const files = [
   ...collect(path.join(appRoot, "scripts"), true),
   ...collect(path.join(appRoot, "tests"), true),
   ...collect(path.join(appRoot, "desktop"), true),
-  ...[path.join(appRoot, "public", "app.js")].filter((file) => existsSync(file)),
+  ...collect(path.join(appRoot, "public"), false),
+  ...collect(path.join(appRoot, "editor"), true),
 ].sort();
 
 let failed = 0;

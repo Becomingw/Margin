@@ -19,6 +19,9 @@
 从论文初稿到技术文档，把阅读、批注、修改和版本回顾放在一起。
 正文保留原始格式，审阅记录独立保存；无需账号或云服务，也不需要配置 AI。
 
+**v0.3.0 新增**：Plate / Slate 正文直接编辑、外部 Agent MCP 接入，以及更快、更稳定的
+审阅导航。见[更新说明](docs/releases/v0.3.0.md)。
+
 ## 从阅读到交接
 
 ### 阅读，专注于文字本身
@@ -64,6 +67,17 @@
 
 ### 修订，看见变化，也记住原因
 
+现已接入 **Plate / Slate 正文编辑器**。打开 Markdown，点击
+**直接编辑正文**，即可直接输入、设置格式和修改表格；显式保存后记录为修订。
+未修改块保留原始源码，公式和暂不支持的结构保留源码编辑入口。
+详见 [编辑与兼容说明](docs/markdown.md)。开发环境 `npm ci` 会自动构建编辑器；
+修改 `editor/` 后运行 `npm run build:editor`。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/plate-editor-dark.png">
+  <img src="docs/images/plate-editor-light.png" alt="Plate Markdown 正文编辑器：格式工具、表格与源码锚定批注" width="100%">
+</picture>
+
 从局部替换到全文源码编辑，按需要选择修改范围。保存时可以填写修改理由、
 关联对应批注，把「改了什么」与「为什么改」留在一起。
 
@@ -76,6 +90,13 @@
 <br>
 <img src="docs/images/review-markdown-changes.png" alt="Markdown 修订视图：区分新增与删除的源码内容" width="100%">
 </details>
+
+### 与外部 Agent 一起评阅
+
+点击顶部 **MCP**，将当前工作区接入外部 Agent。支持读取 Markdown / LaTeX、
+查询批注与历史、添加 AI 批注和回复、提交修改建议。建议在侧栏显示差异，
+由你采纳后写入正文；来源、关联批注和撤销历史完整保留。
+桌面端可直接导出本次连接配置，CLI 支持 HTTP 与 stdio，见 [MCP 接入说明](docs/mcp.md)。
 
 ### 交接，把上下文一起带走
 
@@ -102,28 +123,29 @@
 | 论文自查 | 通读一轮，用批注标出论证与表达问题，再逐项修订。 |
 | 导师或合作者审阅 | 交换完整审阅包，让意见、回复与修改理由一起传递。 |
 | 技术文档打磨 | 在 Markdown 原始格式中修改，回看每一轮的差异。 |
-| 外部 Agent 辅助修改 | 提供审阅包中的正文与反馈，作为外部工具理解修改需求的上下文。 |
+| 外部 Agent 辅助修改 | 通过 MCP 读取论文、添加批注和提出修改建议，由你预览并采纳。 |
 
 ## 下载与开始
 
-| 平台 | v0.2.1 安装包 |
+| 平台 | v0.3.0 安装包 |
 | --- | --- |
-| macOS · Apple Silicon | [下载 DMG](https://github.com/Becomingw/Margin/releases/download/v0.2.1/Margin-0.2.1-mac-arm64.dmg) |
-| macOS · Intel | [下载 DMG](https://github.com/Becomingw/Margin/releases/download/v0.2.1/Margin-0.2.1-mac-x64.dmg) |
-| Windows · x64 | [下载安装程序](https://github.com/Becomingw/Margin/releases/download/v0.2.1/Margin-0.2.1-win-x64.exe) |
+| macOS · Apple Silicon | [下载 DMG](https://github.com/Becomingw/Margin/releases/download/v0.3.0/Margin-0.3.0-mac-arm64.dmg) |
+| macOS · Intel | [下载 DMG](https://github.com/Becomingw/Margin/releases/download/v0.3.0/Margin-0.3.0-mac-x64.dmg) |
+| Windows · x64 | [下载安装程序](https://github.com/Becomingw/Margin/releases/download/v0.3.0/Margin-0.3.0-win-x64.exe) |
 
 1. **安装 Margin**：macOS 拖入「应用程序」；Windows 运行安装程序。无需另外安装 Node。
 2. **打开文档或项目**：选择 `.md`、`.tex` 或文件夹，也可以拖入，或导入收到的审阅包。
 3. **开始第一条批注**：选中文字留下意见，修改后保存，再通过修订视图回看变化。
 
-macOS ZIP、校验和及验证范围见[发布页](https://github.com/Becomingw/Margin/releases/tag/v0.2.1)。
+macOS ZIP、校验和及验证范围见[发布页](https://github.com/Becomingw/Margin/releases/tag/v0.3.0)。
 当前安装包未签名，macOS 未公证，系统可能显示开发者身份提示。
 
 <details>
 <summary><strong>使用前了解这几件事</strong></summary>
 
 - Margin 专注人工审阅，没有内置 AI 执行功能，也不需要模型或 API Key。
-- 具体语法和边界见 [Markdown 支持说明](docs/markdown.md)。编辑仍基于源码；LaTeX 不是排版 PDF 编辑器。
+- Markdown 支持直接编辑并显式保存；复杂公式、HTML 等保留源码编辑入口。
+  具体边界见 [Markdown 支持说明](docs/markdown.md)。LaTeX 不是排版 PDF 编辑器。
 - 非 UTF-8 文件只读。审阅包压缩前后均限 32 MiB，并包含历史版本与已删除批注。
 - 审阅包用于完整恢复，不自动合并相同 ID 的分支；单独修改 `REVIEW.md` 不会成为可导入的修改补丁。
 - 本地浏览器版与源码运行见[安装指南](docs/INSTALL-FOR-AGENTS.md)；旧数据见[迁移说明](docs/migration.md)。

@@ -8,7 +8,7 @@ import { createReviewStore, safeReviewPath } from "../review-store.mjs";
 
 export async function atomicFile(filename, content) {
   const temporary = `${filename}.${randomUUID()}.tmp`;
-  try { await fs.writeFile(temporary, content); await fs.rename(temporary, filename); }
+  try { await fs.writeFile(temporary, content, { mode: 0o600 }); await fs.rename(temporary, filename); }
   finally { await fs.rm(temporary, { force: true }); }
 }
 export async function exists(filename) {
